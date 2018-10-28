@@ -1,0 +1,2 @@
+## Automated Farming Unit
+This project aims to create the right environment for the growth of certain vegetables by contolling their environment while employing the hydroponic farming method. This will be done by taking in data using sensors such as light, moisture, water level, temperature, pH, Co2 and EC while using devices such as fans, pumps, LEDs and other actuators to automate the farming process. A raspberry pi will be used to control the entire process. This is because a server will be running on board allowing for the grower to view metrics related to the farm/unit.
