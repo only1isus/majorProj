@@ -5,10 +5,11 @@ import (
 	"time"
 
 	db "github.com/only1isus/majorProj/database"
+	"github.com/only1isus/majorProj/util"
 )
 
 func main() {
-	logEntry := db.Log{
+	logEntry := util.Log{
 		Time:    time.Now().Unix(),
 		Success: true,
 		Message: "hello mate",
@@ -24,7 +25,8 @@ func main() {
 	if err != nil {
 		fmt.Printf("got an errorr %v", err)
 	}
+
 	fmt.Println(unformatted)
-	db.Decode(unformatted)
+	// db.Decode(unformatted)
 
 }

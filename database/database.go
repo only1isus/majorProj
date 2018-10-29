@@ -6,20 +6,11 @@ import (
 	"log"
 
 	"github.com/dgraph-io/badger"
+	"github.com/only1isus/majorProj/util"
 )
 
-// Log defines the structure of the log entry s
-type Log struct {
-	Time    int64
-	Success bool
-	Message string
-}
-
-// PlaceHolder stores the structured data to be used after Decode function call
-var PlaceHolder []byte
-
 // Encode takes structured data and returns a slice of bytes
-func Encode(data Log) ([]byte, error) {
+func Encode(data util.Log) ([]byte, error) {
 	encoded, err := json.Marshal(data)
 	if err != nil {
 		return nil, fmt.Errorf("got: %v", err)
@@ -28,16 +19,15 @@ func Encode(data Log) ([]byte, error) {
 }
 
 // Decode takes a slice of bytes and returns an interface of the structured data
-func Decode(data interface{}) (interface{}, error) {
-	var holder interface{}
-	fmt.Println(data)
-
-	err := json.Unmarshal(data.([]byte), &holder)
-	if err != nil {
-		return nil, err
-	}
-	return holder, nil
-}
+// func Decode(data string) (interface{}, error) {
+// 	var holder util.Log
+// 	unmarshalled := data.([]byte)
+// 	err := json.Unmarshal(unmarshalled, &holder)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	return holder, nil
+// }
 
 func intializer() *badger.DB {
 	opts := badger.DefaultOptions
@@ -77,7 +67,7 @@ func GetEntry(key string) (interface{}, error) {
 			return err
 		}
 		// d := make(chan []byte)
-		PlaceHolder, err = data.Value()
+		util.PlaceHolder, err = data.Value()
 		if err != nil {
 			fmt.Printf("got an error %v", err)
 		}
@@ -87,5 +77,5 @@ func GetEntry(key string) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	return string(PlaceHolder), nil
+	return string(util.PlaceHolder), nil
 }
