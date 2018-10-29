@@ -1,0 +1,27 @@
+# database settings
+database_connection:
+ port: 8001
+ host: 'http://localhost'
+ require_authentication: false
+
+
+# raspberryPi config setting 
+ pi_config:
+  mode: "BOARD"
+  ssh:
+   - enable: true
+     port: 22
+     host: "http://localhost"
+     username: "isus"
+ 
+# input devices pin connections
+input_devices:
+ fan: 
+ - type: "output"
+   on_time: 59043
+   pin: 16
+   log: true
+ light:
+ - type: "output"
+   on_time: 
+ 
