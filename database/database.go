@@ -1,81 +1,128 @@
-package database
+package db
 
 import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 
-	"github.com/dgraph-io/badger"
-	"github.com/only1isus/majorProj/util"
+	"github.com/boltdb/bolt"
 )
 
-// Encode takes structured data and returns a slice of bytes
-func Encode(data util.Log) ([]byte, error) {
-	encoded, err := json.Marshal(data)
+// Sensor is a collection of Entry data
+type Sensor struct {
+	Data []Entry `json:"data"`
+}
+
+// Entry is the structure of the data entered
+type Entry struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Time      string  `json:"time"`
+	Timestamp int64   `json:"timestamp"`
+	Value     float32 `json:"value"`
+}
+
+func getdbpath() string {
+	pwd, err := os.Getwd()
 	if err != nil {
-		return nil, fmt.Errorf("got: %v", err)
+		log.Fatal(err)
+	}
+	dbpath := filepath.Join(pwd, "data/mainnet.db")
+	return dbpath
+}
+
+// Loaddb loads the database if it already exists and creates one
+// if not
+func Loaddb() {
+	db, err := bolt.Open(getdbpath(), 0644, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+}
+
+// Initialize is the initializer for the database
+func Initialize() *bolt.DB {
+	db, err := bolt.Open(getdbpath(), 0644, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return db
+}
+
+// Encode takes a value as a sturct and returns []byte
+func Encode(value interface{}) ([]byte, error) {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
 	}
 	return encoded, nil
 }
 
-// Decode takes a slice of bytes and returns an interface of the structured data
-// func Decode(data string) (interface{}, error) {
-// 	var holder util.Log
-// 	unmarshalled := data.([]byte)
-// 	err := json.Unmarshal(unmarshalled, &holder)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return holder, nil
-// }
-
-func intializer() *badger.DB {
-	opts := badger.DefaultOptions
-	opts.Dir = "./data"
-	opts.ValueDir = "./data"
-
-	db, err := badger.Open(opts)
+// Decode takes the value and converts the data to a struct
+func Decode(data string, holder interface{}) error {
+	err := json.Unmarshal([]byte(data), &holder)
 	if err != nil {
-		log.Println("couldn't create the database")
+		return fmt.Errorf("cannot unmarshal json %v ", err)
 	}
-
-	return db
+	return nil
 }
 
-// NewEnty takes a key and a value and appends it to the database
-func NewEnty(key string, value []byte) {
-	db := intializer()
-	defer db.Close()
-	err := db.Update(func(txn *badger.Txn) error {
-		err := txn.Set([]byte(key), []byte(value))
-		return err
-	})
+// GetEntry searches the database for a value associated with the
+// given key
+func GetEntry(key string) {
 
-	if err != nil {
-		fmt.Println("cannot open database")
-	}
 }
 
-// GetEntry takes a key searches the database and returns an interface
-func GetEntry(key string) (interface{}, error) {
-	db := intializer()
+// CreateBucketEntry generates a new bucket entry and attaches it to the database
+func CreateBucketEntry(name string, key string, value interface{}) error {
+	// change data to a json structure to be saved in the database
+	entrydatajson, err := Encode(value)
+	if err != nil {
+		return fmt.Errorf("could not encode data %v ", err)
+	}
+	// open the database and save entry e.
+	db := Initialize()
 	defer db.Close()
 
-	err := db.View(func(txn *badger.Txn) error {
-		data, err := txn.Get([]byte(key))
+	err = db.Update(func(tx *bolt.Tx) error {
+		// first 8 characters of the uuid used for the bucket name
+		b, err := tx.CreateBucketIfNotExists([]byte(name))
 		if err != nil {
-			return err
+			return fmt.Errorf("create bucket: %s", err)
 		}
-		// d := make(chan []byte)
-		util.PlaceHolder, err = data.Value()
+		err = b.Put([]byte(key), []byte(entrydatajson))
 		if err != nil {
-			fmt.Printf("got an error %v", err)
+			return fmt.Errorf("could not put %v ", err)
 		}
-
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("could not update %v ", err)
 	}
-	return string(util.PlaceHolder), nil
+	return nil
+}
+
+// GetFromBucket function takes a key and returns the value as a json object
+func GetFromBucket(name string, key string) string {
+	db := Initialize()
+	defer db.Close()
+
+	var value []byte
+
+	err := db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(name))
+		if bucket == nil {
+			return fmt.Errorf("Bucket not found")
+		}
+		value = bucket.Get([]byte(key))
+		return nil
+	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	return string(value)
 }
