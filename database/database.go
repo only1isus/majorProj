@@ -10,6 +10,10 @@ import (
 	"github.com/boltdb/bolt"
 )
 
+const (
+	filename = "data/mainnet.db"
+)
+
 // Sensor is a collection of Entry data
 type Sensor struct {
 	Data []Entry `json:"data"`
@@ -24,17 +28,18 @@ type Entry struct {
 	Value     float32 `json:"value"`
 }
 
+// getdbpath returns a string of the full file path
 func getdbpath() string {
 	pwd, err := os.Getwd()
 	if err != nil {
 		log.Fatal(err)
 	}
-	dbpath := filepath.Join(pwd, "data/mainnet.db")
+	dbpath := filepath.Join(pwd, filename)
 	return dbpath
 }
 
 // Loaddb loads the database if it already exists and creates one
-// if not
+// if none exists
 func Loaddb() {
 	db, err := bolt.Open(getdbpath(), 0644, nil)
 	if err != nil {
@@ -44,6 +49,7 @@ func Loaddb() {
 }
 
 // Initialize is the initializer for the database
+// it creates an instance of the database and retruns a struct of the database
 func Initialize() *bolt.DB {
 	db, err := bolt.Open(getdbpath(), 0644, nil)
 	if err != nil {
@@ -70,12 +76,6 @@ func Decode(data string, holder interface{}) error {
 	return nil
 }
 
-// GetEntry searches the database for a value associated with the
-// given key
-func GetEntry(key string) {
-
-}
-
 // CreateBucketEntry generates a new bucket entry and attaches it to the database
 func CreateBucketEntry(name string, key string, value interface{}) error {
 	// change data to a json structure to be saved in the database
@@ -83,10 +83,9 @@ func CreateBucketEntry(name string, key string, value interface{}) error {
 	if err != nil {
 		return fmt.Errorf("could not encode data %v ", err)
 	}
-	// open the database and save entry e.
+
 	db := Initialize()
 	defer db.Close()
-
 	err = db.Update(func(tx *bolt.Tx) error {
 		// first 8 characters of the uuid used for the bucket name
 		b, err := tx.CreateBucketIfNotExists([]byte(name))
@@ -125,4 +124,63 @@ func GetFromBucket(name string, key string) string {
 		log.Fatal(err)
 	}
 	return string(value)
+}
+
+// NewNestedUser - this function takes a subbucket name as a string and an User interface
+func NewNestedUser(subBucketName string, in interface{}) error {
+	db := Initialize()
+	defer db.Close()
+	err := db.Update(func(tx *bolt.Tx) error {
+		// Setup the users bucket.
+		bkt, err := tx.CreateBucketIfNotExists([]byte("User"))
+		if err != nil {
+			return err
+		}
+		nesbucket, err := bkt.CreateBucket([]byte(subBucketName))
+		if err != nil {
+			return err
+		}
+
+		encoded, err := Encode(in)
+		if err != nil {
+			return fmt.Errorf("couldn't encode user data %v", err)
+		}
+		if err := nesbucket.Put([]byte(subBucketName), encoded); err != nil {
+			return fmt.Errorf("couldn't create subbucket %v ", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("could not update %v ", err)
+	}
+	return nil
+}
+
+// GetNestedUser - this function takes a subbucket name as a string and an User interface
+func GetNestedUser(subBucketName string, in interface{}) error {
+	db := Initialize()
+	defer db.Close()
+
+	var value []byte
+
+	err := db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte("User"))
+		if bucket == nil {
+			return fmt.Errorf("Bucket not found")
+		}
+		nestedBucket := bucket.Bucket([]byte(subBucketName))
+		if nestedBucket == nil {
+			return fmt.Errorf("Subbucket not found")
+		}
+		value = nestedBucket.Get([]byte(subBucketName))
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("could not update %v ", err)
+	}
+
+	if err := Decode(string(value), &in); err != nil {
+		return err
+	}
+	return nil
 }
