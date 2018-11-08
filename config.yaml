@@ -1,24 +1,25 @@
+# to get the config params for databaseConnection, use 'database'
 databaseConnection:
  - port: 8001
-   host: localhost
-   requireAuthentication: true
+   host: http://localhost
+   requireAuthentication: false
 
+# to get the config params for piConfig, use 'pi'
 piConfig:
- mode: BOARD
- ssh:
-  - enable: true
-    port: 22
-    host: http://localhost
-    username: "isus"
- 
-# input devices pin connections
-inputDevices:
+ - mode: BOARD
+   username: isus
+   password: 123456
+   
+# to get the config params for inputDevices, use 'input'
+devices:
  fan: 
   - type: output
-    onTime: 59043
+    automatic: true
+    onTime: nil
     pin: 16
-    log: true
  light:
  - type: output
-   onTime: 
+   automatic: true 
+   onTime: nil
+   pin: 23
  
