@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/boltdb/bolt"
 )
@@ -14,19 +16,21 @@ const (
 	filename = "data/mainnet.db"
 )
 
-// Sensor is a collection of Entry data
-type Sensor struct {
-	Data []Entry `json:"data"`
+// SensorEntry is the structure ofrhe sensor data
+type SensorEntry struct {
+	Time       int64   `json:"time"`
+	SensorType string  `json:"sensorType"`
+	Value      float64 `json:"value"`
 }
 
-// Entry is the structure of the data entered
-type Entry struct {
-	ID        string  `json:"id"`
-	Name      string  `json:"name"`
-	Time      string  `json:"time"`
-	Timestamp int64   `json:"timestamp"`
-	Value     float32 `json:"value"`
+// Sensor struct holds []SensorEntry
+type Sensor struct {
+	Data []SensorEntry `json:"data"`
 }
+
+var (
+	holder = make(map[string]string)
+)
 
 // getdbpath returns a string of the full file path
 func getdbpath() string {
@@ -164,15 +168,11 @@ func GetNestedUser(subBucketName string, in interface{}) error {
 	var value []byte
 
 	err := db.View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte("User"))
-		if bucket == nil {
+		root := tx.Bucket([]byte("User"))
+		if root == nil {
 			return fmt.Errorf("Bucket not found")
 		}
-		nestedBucket := bucket.Bucket([]byte(subBucketName))
-		if nestedBucket == nil {
-			return fmt.Errorf("Subbucket not found")
-		}
-		value = nestedBucket.Get([]byte(subBucketName))
+		value = root.Get([]byte(subBucketName))
 		return nil
 	})
 	if err != nil {
@@ -183,4 +183,74 @@ func GetNestedUser(subBucketName string, in interface{}) error {
 		return err
 	}
 	return nil
+}
+
+// nestedSensorEntry function takes a bucketname, a subbucket name and a value
+// bucketName = Root bucket as a string
+// subBucketName = nested bucket name. A sensor name can be considered as a subBucketName.
+// the value is the encoded data to be stored.
+func nestedSensorEntry(bucketName string, value *[]byte) error {
+	bucketName = strings.ToUpper(bucketName)
+	rootName := "SENSOR"
+	db := Initialize()
+	defer db.Close()
+
+	err := db.Update(func(tx *bolt.Tx) error {
+		root, err := tx.CreateBucketIfNotExists([]byte(rootName))
+		if err != nil {
+			return err
+		}
+
+		timeID := time.Now()
+		id := timeID.Format(time.RFC3339)
+		// the time, formatted as time.RFC3339, is used as the key
+		if err := root.Put([]byte(id), *value); err != nil {
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("got an error while trying to create nested bucket. %v", err)
+	}
+	return nil
+}
+
+// AddSensorData - this function takes s string for the bucket name and a struct of the data and returns an error
+// bucketName is the name of the sensor data being stored
+func AddSensorData(bucketName string, in interface{}) error {
+	encoded, err := Encode(&in)
+	if err != nil {
+		fmt.Printf("cannot encode json %v ", err)
+	}
+	if err := nestedSensorEntry(bucketName, &encoded); err != nil {
+		return err
+	}
+	return nil
+}
+
+// GetSensorData takes a bucketName as a string and returns a slice of sensor data
+func GetSensorData(sensorType string) (map[string]string, error) {
+	rootBucket := "SENSOR"
+
+	db := Initialize()
+	defer db.Close()
+
+	err := db.View(func(tx *bolt.Tx) error {
+		root := tx.Bucket([]byte(rootBucket))
+		root.ForEach(func(k, v []byte) error {
+			value := SensorEntry{}
+			if err := Decode(string(v), &value); err != nil {
+				return err
+			}
+			// Sensor = append(Sensor, value)
+			// value := interface{}
+			holder[string(k)] = string(v)
+			return nil
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	// fmt.Println(holder)
+	return holder, nil
 }
