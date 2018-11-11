@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/boltdb/bolt"
 )
@@ -80,34 +79,6 @@ func Decode(data string, holder interface{}) error {
 	return nil
 }
 
-// CreateBucketEntry generates a new bucket entry and attaches it to the database
-func CreateBucketEntry(name string, key string, value interface{}) error {
-	// change data to a json structure to be saved in the database
-	entrydatajson, err := Encode(value)
-	if err != nil {
-		return fmt.Errorf("could not encode data %v ", err)
-	}
-
-	db := Initialize()
-	defer db.Close()
-	err = db.Update(func(tx *bolt.Tx) error {
-		// first 8 characters of the uuid used for the bucket name
-		b, err := tx.CreateBucketIfNotExists([]byte(name))
-		if err != nil {
-			return fmt.Errorf("create bucket: %s", err)
-		}
-		err = b.Put([]byte(key), []byte(entrydatajson))
-		if err != nil {
-			return fmt.Errorf("could not put %v ", err)
-		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("could not update %v ", err)
-	}
-	return nil
-}
-
 // GetFromBucket function takes a key and returns the value as a json object
 func GetFromBucket(name string, key string) string {
 	db := Initialize()
@@ -130,36 +101,6 @@ func GetFromBucket(name string, key string) string {
 	return string(value)
 }
 
-// NewNestedUser - this function takes a subbucket name as a string and an User interface
-func NewNestedUser(subBucketName string, in interface{}) error {
-	db := Initialize()
-	defer db.Close()
-	err := db.Update(func(tx *bolt.Tx) error {
-		// Setup the users bucket.
-		bkt, err := tx.CreateBucketIfNotExists([]byte("User"))
-		if err != nil {
-			return err
-		}
-		nesbucket, err := bkt.CreateBucket([]byte(subBucketName))
-		if err != nil {
-			return err
-		}
-
-		encoded, err := Encode(in)
-		if err != nil {
-			return fmt.Errorf("couldn't encode user data %v", err)
-		}
-		if err := nesbucket.Put([]byte(subBucketName), encoded); err != nil {
-			return fmt.Errorf("couldn't create subbucket %v ", err)
-		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("could not update %v ", err)
-	}
-	return nil
-}
-
 // GetNestedUser - this function takes a subbucket name as a string and an User interface
 func GetNestedUser(subBucketName string, in interface{}) error {
 	db := Initialize()
@@ -168,7 +109,7 @@ func GetNestedUser(subBucketName string, in interface{}) error {
 	var value []byte
 
 	err := db.View(func(tx *bolt.Tx) error {
-		root := tx.Bucket([]byte("User"))
+		root := tx.Bucket([]byte("USER"))
 		if root == nil {
 			return fmt.Errorf("Bucket not found")
 		}
@@ -185,64 +126,71 @@ func GetNestedUser(subBucketName string, in interface{}) error {
 	return nil
 }
 
-// nestedSensorEntry function takes a bucketname, a subbucket name and a value
-// bucketName = Root bucket as a string
-// subBucketName = nested bucket name. A sensor name can be considered as a subBucketName.
-// the value is the encoded data to be stored.
-func nestedSensorEntry(bucketName string, value *[]byte) error {
-	bucketName = strings.ToUpper(bucketName)
-	rootName := "SENSOR"
+// nestedEntry function takes a bucketname
+// bucketName is rootbucket as a string
+func nestedEntry(bucketName string, key string, value *[]byte) error {
+	rootName := strings.ToUpper(bucketName)
 	db := Initialize()
 	defer db.Close()
 
 	err := db.Update(func(tx *bolt.Tx) error {
-		root, err := tx.CreateBucketIfNotExists([]byte(rootName))
-		if err != nil {
-			return err
+		// to avoid overwriting the user data if the key already exists compare the bucketName to
+		// and if they are a match user the CreateBucket method instead.
+		if rootName == "USER" {
+			root, err := tx.CreateBucket([]byte(rootName))
+			if err != nil {
+				return fmt.Errorf("user already exists")
+			}
+			if err := root.Put([]byte(key), *value); err != nil {
+				return err
+			}
+		} else {
+			root, err := tx.CreateBucketIfNotExists([]byte(rootName))
+			if err != nil {
+				return err
+			}
+			if err := root.Put([]byte(key), *value); err != nil {
+				return err
+			}
 		}
 
-		timeID := time.Now()
-		id := timeID.Format(time.RFC3339)
-		// the time, formatted as time.RFC3339, is used as the key
-		if err := root.Put([]byte(id), *value); err != nil {
-		}
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("got an error while trying to create nested bucket. %v", err)
+		return fmt.Errorf("got an error while trying to create enrty, %v", err)
 	}
 	return nil
 }
 
-// AddSensorData - this function takes s string for the bucket name and a struct of the data and returns an error
-// bucketName is the name of the sensor data being stored
-func AddSensorData(bucketName string, in interface{}) error {
-	encoded, err := Encode(&in)
+// AddEntry - this function takes a string for the bucketName and key and the struct of the data to be stored
+func AddEntry(bucketName string, key string, value interface{}) error {
+	encoded, err := Encode(&value)
 	if err != nil {
-		fmt.Printf("cannot encode json %v ", err)
+		fmt.Printf("cannot encode data entered, %v ", err)
 	}
-	if err := nestedSensorEntry(bucketName, &encoded); err != nil {
+	if err := nestedEntry(bucketName, key, &encoded); err != nil {
 		return err
 	}
 	return nil
 }
 
-// GetSensorData takes a bucketName as a string and returns a slice of sensor data
-func GetSensorData(sensorType string) (map[string]string, error) {
-	rootBucket := "SENSOR"
+// GetSensorData takes a bucketName as a string
+func GetSensorData(bucketName string) (map[string]string, error) {
+	rootBucket := strings.ToUpper(bucketName)
 
 	db := Initialize()
 	defer db.Close()
 
 	err := db.View(func(tx *bolt.Tx) error {
 		root := tx.Bucket([]byte(rootBucket))
+		if root == nil {
+			return nil
+		}
 		root.ForEach(func(k, v []byte) error {
 			value := SensorEntry{}
 			if err := Decode(string(v), &value); err != nil {
 				return err
 			}
-			// Sensor = append(Sensor, value)
-			// value := interface{}
 			holder[string(k)] = string(v)
 			return nil
 		})
@@ -251,6 +199,5 @@ func GetSensorData(sensorType string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	// fmt.Println(holder)
 	return holder, nil
 }
