@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -37,9 +36,8 @@ func postUser(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(body, &u); err != nil {
 		fmt.Println(err)
 	}
-	u.CreatedAt = time.Now().Unix()
-	if err := util.CreateUser(&u); err != nil {
-		w.Header().Set("message", "user already exists")
+	err = u.Add()
+	if err != nil {
 		w.WriteHeader(500)
 		fmt.Println(err)
 	} else {
@@ -52,7 +50,7 @@ func getSensorData(w http.ResponseWriter, r *http.Request) {
 
 	device := r.URL.Path[len("/api/sensor/"):]
 	device = strings.ToLower(device)
-	data, err := util.GetSensorData(device)
+	data, err := util.GetSensorDataByType(device)
 	d, err := json.Marshal(data)
 	if err != nil {
 		fmt.Printf("got an error while trying encode response")
@@ -60,7 +58,6 @@ func getSensorData(w http.ResponseWriter, r *http.Request) {
 
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-
 		w.WriteHeader(200)
 		w.Write(d)
 	}

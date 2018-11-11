@@ -2,6 +2,8 @@ package util
 
 import (
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/only1isus/majorProj/database"
 )
@@ -11,13 +13,14 @@ type Log struct {
 	Entry []LogEntry `json:"entry"`
 }
 
+// LogEntry ...
 type LogEntry struct {
 	Time    int64  `json:"time"`
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 }
 
-// User is the user
+// User ...
 type User struct {
 	CreatedAt int64  `json:"createdAt"`
 	Name      string `json:"name"`
@@ -28,9 +31,9 @@ type User struct {
 
 // SensorEntry is the structure ofrhe sensor data
 type SensorEntry struct {
-	Time       int64  `json:"time"`
-	SensorType string `json:"sensorType"`
-	Value      string `json:"value"`
+	Time       int64   `json:"time"`
+	SensorType string  `json:"sensorType"`
+	Value      float64 `json:"value"`
 }
 
 // Sensor struct holds []SensorEntry
@@ -38,40 +41,74 @@ type Sensor struct {
 	Data []SensorEntry `json:"data"`
 }
 
-// AddEntry takes a bucketname, key and a value
-func (l Log) AddEntry(bucketName string, key string, value LogEntry) error {
-	valueFromBucket := db.GetFromBucket(bucketName, key)
-
-	holder := []LogEntry{}
-	err := db.Decode(valueFromBucket, &holder)
-	if err != nil {
-		return err
-	}
-	l.Entry = append(l.Entry, value)
-	err = db.CreateBucketEntry(bucketName, key, l.Entry)
+// Add commits the struct to the database
+func (l LogEntry) Add() error {
+	bucketName := "Log"
+	t := time.Now()
+	key := t.Format(time.RFC3339)
+	err := db.AddEntry(bucketName, key, l)
 	if err != nil {
 		fmt.Println(err)
 	}
 	return nil
 }
 
-// CreateUser by passing in the user struct
-func CreateUser(u *User) error {
-	if err := db.NewNestedUser(u.Email, &u); err != nil {
-		return fmt.Errorf("can't do this shit %v", err)
+// Add commits the struct to the database
+func (u *User) Add() error {
+	bucketName := "User"
+	u.Email = strings.ToLower(u.Name)
+	u.CreatedAt = time.Now().Unix()
+	key := u.Email
+	err := db.AddEntry(bucketName, key, &u)
+	if err != nil {
+		return err
 	}
-
 	return nil
 }
 
 // GetUser takes a key and return a user struct
 func GetUser(key string) (map[string]interface{}, error) {
-	// user := interface{}
 	var user map[string]interface{}
 	err := db.GetNestedUser(key, &user)
 	if err != nil {
 		return nil, err
 	}
-
 	return user, nil
+}
+
+// Add method commits the structured data to the database
+func (sensor *SensorEntry) Add() error {
+	bucketName := "Sensor"
+	sensor.SensorType = strings.Title(sensor.SensorType)
+	t := time.Now()
+	key := t.Format(time.RFC3339)
+	err := db.AddEntry(bucketName, key, &sensor)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// GetSensorDataByType takes a bucketName and returns an array of the sensor data
+func GetSensorDataByType(sensorType string) ([]SensorEntry, error) {
+	bucketName := "Sensor"
+	data := SensorEntry{}
+	sensorSlice := []SensorEntry{}
+	sensorType = strings.Title(sensorType)
+	values, err := db.GetSensorData(bucketName)
+	if err != nil {
+		return nil, err
+	}
+	for _, val := range values {
+		if err := db.Decode(val, &data); err != nil {
+			return nil, err
+		}
+		if sensorType == data.SensorType {
+			sensorSlice = append(sensorSlice, data)
+		}
+		if sensorType == "All" {
+			sensorSlice = append(sensorSlice, data)
+		}
+	}
+	return sensorSlice, nil
 }
