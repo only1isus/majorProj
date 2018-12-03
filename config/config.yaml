@@ -1,0 +1,52 @@
+databaseConnection:
+ - port: 8001
+   host: http://localhost
+   requireAuthentication: false
+
+piConfig:
+ - mode: BOARD
+   username: isus
+   password: 123456
+   
+devices:
+  - name: light
+    pin: 16
+    onTime: 
+    every: 
+    rate: 0.7
+    automatic: false
+
+  - name: fan
+    pin: 16
+    onTime: 
+    every: 
+    rate: 0.7
+    automatic: true
+  
+  - name: circulationpump
+    pin: 16
+    onTime: 
+    every: 
+    rate: 0.7
+    automatic: true
+  
+  - name: phuppump
+    pin: 16
+    onTime: 
+    every: 
+    rate: 0.7
+    automatic: true
+  
+  - name: phdownpump
+    pin: 16
+    onTime: 
+    every: 
+    rate: 0.7
+    automatic: true
+  
+  - name: airpump
+    pin: 16
+    onTime: 
+    every: 
+    rate: 0.7
+    automatic: true
