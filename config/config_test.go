@@ -5,14 +5,13 @@ import (
 )
 
 func TestGetConfig(t *testing.T) {
-	fan := Devices{}
-	deviceName := "phuppump"
-	fanSetting, err := fan.Get(deviceName)
-	if err != nil {
-		t.Log(err)
-	}
-	if fanSetting.Name != deviceName {
-		t.Error("cannot find the fan setting")
-	}
 
+	data, err := ReadConfigFile()
+	if err != nil {
+		t.Fail()
+	}
+	if data == nil {
+		t.Log("reading file failed.")
+		t.Fail()
+	}
 }
