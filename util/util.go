@@ -41,6 +41,15 @@ type Sensor struct {
 	Data []SensorEntry `json:"data"`
 }
 
+// OutputDeviceSetting tells how an output device is suppose to behave
+type OutputDeviceSetting struct {
+	Name      string // the name of the device.
+	Pin       int    // GPIO pin numner the device is connected to.
+	Ontime    int64  // off time in minutes
+	Every     int64  // repeat every X minutes
+	Automatic bool   // if set to 'true' then the ontime and every has no effect.
+}
+
 // Add commits the struct to the database
 func (l LogEntry) Add() error {
 	bucketName := "Log"
@@ -67,8 +76,8 @@ func (u *User) Add() error {
 }
 
 // GetUser takes a key and return a user struct
-func GetUser(key string) (map[string]interface{}, error) {
-	var user map[string]interface{}
+func GetUser(key string) (map[string]string, error) {
+	var user map[string]string
 	err := db.GetNestedUser(key, &user)
 	if err != nil {
 		return nil, err
@@ -95,7 +104,7 @@ func GetSensorDataByType(sensorType string) ([]SensorEntry, error) {
 	data := SensorEntry{}
 	sensorSlice := []SensorEntry{}
 	sensorType = strings.Title(sensorType)
-	values, err := db.GetSensorData(bucketName)
+	values, err := db.GetFromDatabase(bucketName)
 	if err != nil {
 		return nil, err
 	}
@@ -111,4 +120,19 @@ func GetSensorDataByType(sensorType string) ([]SensorEntry, error) {
 		}
 	}
 	return sensorSlice, nil
+}
+
+// GetLogs returns all the logs
+func GetLogs() (map[string]string, error) {
+	values, err := db.GetFromDatabase("log")
+	if err != nil {
+		return nil, err
+	}
+	return values, nil
+}
+
+// ChangeTiming method takes the timing (onTime and Every and make the changes in the config.yaml file.)
+func (o *OutputDeviceSetting) ChangeTiming(onTime, every int64) {
+	o.Every = every
+	o.Ontime = onTime
 }
