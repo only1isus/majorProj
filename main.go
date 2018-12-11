@@ -1,32 +1,40 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"time"
 
-	db "github.com/only1isus/majorProj/database"
-	"github.com/only1isus/majorProj/util"
+	"github.com/only1isus/majorProj/control"
 )
 
+func welcome() {
+	version := "1.1.0"
+	fmt.Printf(`										
+                            |/
+                        . - |~ .
+                     .*          ', 
+                    ,   #          '
+                    '              *		
+                    '              '  
+                     '-,___.'__,.-'
+    ==============================================
+                   AMBOROSA - alpha
+                          %v
+    ==============================================
+    
+    `, version)
+}
+
 func main() {
-	logEntry := util.Log{
-		Time:    time.Now().Unix(),
-		Success: true,
-		Message: "hello mate",
+	welcome()
+	public := flag.Bool("public", false, "if set to true then the system will make the info public")
+	if *public {
+		fmt.Println("The system is public.")
 	}
 
-	formatted, err := db.Encode(logEntry)
-	if err != nil {
-		fmt.Printf("got the following error: %v", err)
-	}
-	db.NewEnty("test1", formatted)
-
-	unformatted, err := db.GetEntry("test1")
-	if err != nil {
-		fmt.Printf("got an errorr %v", err)
-	}
-
-	fmt.Println(unformatted)
-	// db.Decode(unformatted)
-
+	fan := control.Fan{}
+	fan.On()
+	time.Sleep(3 * time.Second)
+	fan.Off()
 }
