@@ -2,6 +2,7 @@ package control
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -28,9 +29,9 @@ type OutputDevice struct {
 
 // DriverPins ...
 type DriverPins struct {
-	EN  rpio.Pin `yaml:"en"`
-	IN1 rpio.Pin `yaml:"in1"`
-	IN2 rpio.Pin `yaml:"in2"`
+	EN  uint8 `yaml:"en"`
+	IN1 uint8 `yaml:"in1"`
+	IN2 uint8 `yaml:"in2"`
 }
 
 // ADC AS1115 ADC module
@@ -61,22 +62,6 @@ type AnalogSensors interface {
 	Get()
 	Save()
 	Log()
-}
-
-// initPin initialize the pin and returns a pin struct.
-func initializePins(pins DriverPins, ENMode, INMode rpio.Mode) (*DriverPins, error) {
-	// var p []rpio.Pin
-	err := rpio.Open()
-	defer rpio.Close()
-
-	if err != nil {
-		return nil, err
-	}
-	rpio.PinMode(pins.EN, ENMode)
-	rpio.PinMode(pins.IN2, INMode)
-	rpio.PinMode(pins.IN1, INMode)
-
-	return &pins, nil
 }
 
 // Get reads the config file and returns a list of nodes and error.
@@ -120,63 +105,116 @@ func (t *Temperature) Get() (*float64, error) {
 }
 
 // Maintain method tries to keep the temperature at the value passed to the method.
-func (t *Temperature) Maintain(value float64, fan Fan) error {
+func (t *Temperature) Maintain(value float64, fan *OutputDevice) error {
 	go func() error {
+
 		temp, err := t.Get()
 		if err != nil {
 			return err
 		}
-		if *temp >= value {
-		maintainTemperature:
-			for t.value >= value {
-				fan.On()
-				time.Sleep(3 * time.Second)
-				if t.value <= value {
-					fan.Off()
-					break maintainTemperature
+		log.Printf("Current temperature is %v", *temp)
+		for {
+			temp, err := t.Get()
+			if err != nil {
+				return err
+			}
+			val := *temp
+			log.Printf("Current temperature is %v", val)
+			if val >= value {
+				log.Printf("Turning on fan. Current temperature is %v, limit set to %v", val, value)
+				if err := fan.On(); err != nil {
+					return err
+				}
+				// maintainTemperature:
+				for {
+					// fan.On()
+					currentTemp, err := t.Get()
+					if err != nil {
+						return err
+					}
+					if value >= *currentTemp {
+						log.Printf("Temperature now at %v. Cooling for another 30s", *currentTemp)
+						time.Sleep(30 * time.Second)
+						log.Println("Done")
+						if err := fan.Off(); err != nil {
+							return err
+						}
+						break //maintainTemperature
+					}
+					// time.Sleep(3 * time.Second)
 				}
 			}
+			time.Sleep(30 * time.Second)
+			// return nil
 		}
-		return err
 	}()
 	return nil
 }
 
 // On method turns the fan on.
-func (f *Fan) On() {
-	go func() {
-		fanPins, err := initializePins(f.Pins, rpio.Pwm, rpio.Output)
-		if err != nil {
-			fmt.Println(err)
-		}
+func (o OutputDevice) On() error {
 
-		// need to implement the duty cycle for the output pins
-		// rate := int(f.Rate * 255)
-		// fanPins.EN.Pwm()
-		// fanPins.EN.Du
-		// fanPins.EN.Freq(rate)
+	err := rpio.Open()
+	if err != nil {
+		return err
+	}
 
-		(*fanPins).EN.High()
-		(*fanPins).IN1.Low()
-		(*fanPins).IN2.High()
-	}()
+	defer rpio.Close()
+
+	en := rpio.Pin(o.Pins.EN)
+	in1 := rpio.Pin(o.Pins.IN1)
+	in2 := rpio.Pin(o.Pins.IN2)
+	// en.Pwm()
+	rpio.StartPwm()
+	// defer rpio.StopPwm()
+	en.Pwm()
+	in1.Output()
+	in2.Output()
+
+	en.Freq(19200000)
+	en.DutyCycle(uint32(o.Rate*128), 128)
+	in1.Low()
+	in2.High()
+
+	// log := util.LogEntry{}
+	// log.Message = "Fan turned on"
+	// log.Success = true
+	// log.Time = time.Now().Unix()
+	// err = log.Add()
+	// if err != nil {
+	// 	fmt.Println(err)
+	// }
+	return nil
 }
 
 // Off method turns the fan off.
-func (f *Fan) Off() {
-	go func() {
-		fanPins, err := initializePins(f.Pins, rpio.Pwm, rpio.Output)
-		if err != nil {
-			fmt.Println(err)
-		}
-		(*fanPins).EN.Low()
-		(*fanPins).IN1.Low()
-		(*fanPins).IN2.Low()
-	}()
-}
+func (o OutputDevice) Off() error {
+	err := rpio.Open()
+	defer rpio.Close()
 
-// // GetAddresses return the addresses associated with the ADC.
-// func (adc *ADC) GetAddresses() ([]string, error) {
-// 	var addresses []string
-// 	return addresses, nil
-// }
+	if err != nil {
+		return err
+	}
+
+	en := rpio.Pin(o.Pins.EN)
+	in1 := rpio.Pin(o.Pins.IN1)
+	in2 := rpio.Pin(o.Pins.IN2)
+	en.Output()
+	in1.Output()
+	in2.Output()
+
+	en.Low()
+	in1.Low()
+	in2.Low()
+
+	// log := util.LogEntry{}
+	// log.Message = "Fan turned off"
+	// log.Success = true
+	// log.Time = time.Now().Unix()
+	// err = log.Add()
+
+	// if err != nil {
+	// 	fmt.Println(err)
+	// }
+	return nil
+}
