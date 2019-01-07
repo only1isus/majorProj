@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	filename = "data/mainnet.db"
+	filename = "data/main.db"
 )
 
 // SensorEntry is the structure ofrhe sensor data
@@ -33,7 +33,19 @@ var (
 
 // getdbpath returns a string of the full file path
 func getdbpath() string {
-	pwd, err := os.Getwd()
+	var pwd string
+	var err error
+	pwd, err = os.Getwd()
+	if !strings.Contains(pwd, "data") {
+		fmt.Println("Creating the directory")
+		err := os.MkdirAll(strings.Join([]string{pwd, "data"}, "/"), os.ModePerm)
+		if err != nil {
+			fmt.Println("please consider making the directory manually")
+			os.Exit(1)
+		}
+		p, _ := os.Getwd()
+		pwd = p
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -101,15 +113,16 @@ func GetFromBucket(name string, key string) string {
 	return string(value)
 }
 
-// GetNestedUser - this function takes a subbucket name as a string and an User interface
+// GetNestedUser takes a subbucket name as a string and an User interface
 func GetNestedUser(subBucketName string, in interface{}) error {
+	bucketName := strings.ToUpper("User")
 	db := Initialize()
 	defer db.Close()
 
 	var value []byte
 
 	err := db.View(func(tx *bolt.Tx) error {
-		root := tx.Bucket([]byte("USER"))
+		root := tx.Bucket([]byte(bucketName))
 		if root == nil {
 			return fmt.Errorf("Bucket not found")
 		}
@@ -162,7 +175,8 @@ func nestedEntry(bucketName string, key string, value *[]byte) error {
 	return nil
 }
 
-// AddEntry - this function takes a string for the bucketName and key and the struct of the data to be stored
+// AddEntry takes a bucketName and key and data to be stored
+// bucketname is the name GROUP of data being collected. Key is the time in the format (time.RFC3339)
 func AddEntry(bucketName string, key string, value interface{}) error {
 	encoded, err := Encode(&value)
 	if err != nil {
@@ -174,19 +188,20 @@ func AddEntry(bucketName string, key string, value interface{}) error {
 	return nil
 }
 
-// GetSensorData takes a bucketName as a string
-func GetSensorData(bucketName string) (map[string]string, error) {
+// GetFromDatabase takes a bucket name
+func GetFromDatabase(bucketName string) (map[string]string, error) {
 	rootBucket := strings.ToUpper(bucketName)
 
 	db := Initialize()
 	defer db.Close()
 
 	err := db.View(func(tx *bolt.Tx) error {
+		// check if bucket is empty, if it is then return nil otherwise the root.ForEach function panics
 		root := tx.Bucket([]byte(rootBucket))
 		if root == nil {
 			return nil
 		}
-		root.ForEach(func(k, v []byte) error {
+		err := root.ForEach(func(k, v []byte) error {
 			value := SensorEntry{}
 			if err := Decode(string(v), &value); err != nil {
 				return err
@@ -194,6 +209,9 @@ func GetSensorData(bucketName string) (map[string]string, error) {
 			holder[string(k)] = string(v)
 			return nil
 		})
+		if err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
