@@ -44,16 +44,6 @@ func getdbpath() string {
 	return dbpath
 }
 
-// Loaddb loads the database if it already exists and creates one
-// if none exists
-func Loaddb() {
-	db, err := bolt.Open(getdbpath(), 0644, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-}
-
 // Initialize is the initializer for the database
 // it creates an instance of the database and retruns a struct of the database
 func initialize() *bolt.DB {
@@ -65,12 +55,12 @@ func initialize() *bolt.DB {
 }
 
 // Encode takes a value as a sturct and returns []byte
-func encode(value interface{}) ([]byte, error) {
+func encode(value interface{}) (*[]byte, error) {
 	encoded, err := json.Marshal(value)
 	if err != nil {
 		return nil, err
 	}
-	return encoded, nil
+	return &encoded, nil
 }
 
 // Decode takes the value and converts the data to a struct
@@ -84,36 +74,36 @@ func decode(data []byte, holder interface{}) error {
 
 // nestedEntry function takes a bucketname
 // bucketName is rootbucket as a string
-func nestedEntry(bucketName consts.BucketName, key string, value *[]byte) error {
-	rootName := strings.ToUpper(string(bucketName))
+func nestedEntry(bucketName consts.BucketName, key []byte, value *[]byte) error {
+	rootName := []byte(strings.ToUpper(string(bucketName)))
 	db := initialize()
 	defer db.Close()
 
 	err := db.Update(func(tx *bolt.Tx) error {
 		// to avoid overwriting the user data if the key already exists compare the bucketName to
 		// and if they are a match user the CreateBucket method instead.
-		if rootName == strings.ToUpper(string(consts.User)) {
-			root, err := tx.CreateBucketIfNotExists([]byte(rootName))
+		if string(rootName) == strings.ToUpper(string(consts.User)) {
+			root, err := tx.CreateBucketIfNotExists(rootName)
 			if err != nil {
 				return err
 			}
 			// because Put method doesn't tell return an error if the key exists,
 			// a check has to be done manually
-			v := root.Get([]byte(key))
+			v := root.Get(key)
 			if v != nil {
 				return fmt.Errorf("key exists %v", err)
 			}
-			if err = root.Put([]byte(key), *value); err != nil {
+			if err = root.Put(key, *value); err != nil {
 				return fmt.Errorf("key is blank or too large. %v", err)
 			}
 
 		} else {
-			root, err := tx.CreateBucketIfNotExists([]byte(rootName))
+			root, err := tx.CreateBucketIfNotExists(rootName)
 			if err != nil {
 				return err
 			}
 			if err = root.Put([]byte(key), *value); err != nil {
-				return fmt.Errorf("bucket already exists")
+				return fmt.Errorf("key is blank or too large. %v", err)
 			}
 		}
 		return nil
@@ -124,28 +114,31 @@ func nestedEntry(bucketName consts.BucketName, key string, value *[]byte) error 
 	return nil
 }
 
-// AddEntry takes a bucketName and key and data to be stored
-// Key is the time in the format (time.RFC3339)
-func AddEntry(bucketName consts.BucketName, key string, value interface{}) error {
+// AddEntry takes the data to be committed along with the key associated with the data and
+// adds it the the bucket specified. The key must be unique so as to not cause the cause an
+// error. The key, a bucket within a bucket, can be any unique string. If the key is passed
+// as time.Now().Format(time.RFC3339) then the data can be filtered when when ready to be
+// retrieved.
+func AddEntry(bucketName consts.BucketName, key []byte, value interface{}) error {
 	encoded, err := encode(&value)
 	if err != nil {
 		fmt.Printf("cannot encode data entered, %v ", err)
 	}
-	if err := nestedEntry(bucketName, key, &encoded); err != nil {
+	if err := nestedEntry(bucketName, key, encoded); err != nil {
 		return err
 	}
 	return nil
 }
 
 func getFromNestedBucket(bucketName consts.BucketName, filter consts.BucketFilter) (*[]string, error) {
-	rootBucket := strings.ToUpper(string(bucketName))
+	rootBucket := []byte(strings.ToUpper(string(bucketName)))
 	out := new([]string)
 	db := initialize()
 	defer db.Close()
 
 	err := db.View(func(tx *bolt.Tx) error {
 		// check if bucket is empty, if it is then return nil otherwise the root.ForEach function panics
-		root := tx.Bucket([]byte(rootBucket))
+		root := tx.Bucket(rootBucket)
 		if root == nil {
 			return nil
 		}
@@ -185,13 +178,13 @@ func GetSensorData(bucketName consts.BucketName, filter consts.BucketFilter) ([]
 	return out, nil
 }
 
-// GetUserData takes a subbucket name as a string and an User interface
+// GetUserData takes a key as a string and returns a User. If there is no user associated with the
+// key then an error is returned.
 func GetUserData(key string) (*types.User, error) {
 	users, err := getFromNestedBucket(consts.User, consts.All)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(users)
 	u := types.User{}
 	for _, user := range *users {
 		u := types.User{}
@@ -201,7 +194,6 @@ func GetUserData(key string) (*types.User, error) {
 		if u.Email == key {
 			return &u, nil
 		}
-
 	}
 	return &u, err
 }
