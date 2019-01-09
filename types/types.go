@@ -27,9 +27,9 @@ type User struct {
 
 // SensorEntry is the structure ofrhe sensor data
 type SensorEntry struct {
-	Time       int64             `json:"time"`
-	SensorType consts.SensorType `json:"sensorType"`
-	Value      float64           `json:"value"`
+	Time       int64               `json:"time"`
+	SensorType consts.BucketFilter `json:"sensorType"`
+	Value      float64             `json:"value"`
 }
 
 // Sensor struct holds []SensorEntry
