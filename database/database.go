@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/boltdb/bolt"
 	"github.com/only1isus/majorProj/consts"
@@ -18,17 +19,12 @@ const (
 	filename = "data/main.db"
 )
 
-var (
-	holder = make(map[string]string)
-)
-
 // getdbpath returns a string of the full file path
 func getdbpath() string {
 	var pwd string
 	var err error
 	pwd, err = os.Getwd()
 	if !strings.Contains(pwd, "data") {
-		fmt.Println("Creating the directory")
 		err := os.MkdirAll(strings.Join([]string{pwd, "data"}, "/"), os.ModePerm)
 		if err != nil {
 			fmt.Println("please consider making the directory manually")
@@ -130,7 +126,18 @@ func AddEntry(bucketName consts.BucketName, key []byte, value interface{}) error
 	return nil
 }
 
-func getFromNestedBucket(bucketName consts.BucketName, filter consts.BucketFilter) (*[]string, error) {
+func getFromNestedBucket(bucketName consts.BucketName, filter consts.BucketFilter, span int64) (*[]string, error) {
+	// to find the timespan, the time is taken and then the max and min times found.
+	timeNow := time.Now().Unix()
+	maxTime := timeNow + (span * 3600)
+	minTime := timeNow - (span * 3600)
+	// change the times from string to the time.Time struct.
+	maxTimeUnix := time.Unix(maxTime, maxTime/100000000)
+	minTimeUnix := time.Unix(minTime, minTime/100000000)
+	// finally change the time from time.Time to a string
+	max := maxTimeUnix.Format(time.RFC3339)
+	min := minTimeUnix.Format(time.RFC3339)
+
 	rootBucket := []byte(strings.ToUpper(string(bucketName)))
 	out := new([]string)
 	db := initialize()
@@ -142,14 +149,27 @@ func getFromNestedBucket(bucketName consts.BucketName, filter consts.BucketFilte
 		if root == nil {
 			return nil
 		}
-		err := root.ForEach(func(k, v []byte) error {
+
+		// if the timespan is 0, then find and return all the entries filtered by const.BucketFilter
+		if span == 0 {
+			err := root.ForEach(func(k, v []byte) error {
+				if bytes.Contains(v, []byte(filter)) {
+					*out = append(*out, string(v))
+				}
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+
+		// otherwise find the entries within the timespan and filter by BucketFilter
+		c := root.Cursor()
+		for k, v := c.Seek([]byte(min)); k != nil && bytes.Compare(k, []byte(max)) <= 0; k, v = c.Next() {
 			if bytes.Contains(v, []byte(filter)) {
 				*out = append(*out, string(v))
 			}
-			return nil
-		})
-		if err != nil {
-			return err
 		}
 		return nil
 	})
@@ -162,8 +182,8 @@ func getFromNestedBucket(bucketName consts.BucketName, filter consts.BucketFilte
 // GetSensorData returns a list of the sensor data
 // bucketName is the name of the bucket the data should be added to. To choose which type
 // of sensor data is returned set a filter.
-func GetSensorData(bucketName consts.BucketName, filter consts.BucketFilter) ([]types.SensorEntry, error) {
-	d, err := getFromNestedBucket(bucketName, filter)
+func GetSensorData(filter consts.BucketFilter, span int64) ([]types.SensorEntry, error) {
+	d, err := getFromNestedBucket(consts.Sensor, filter, span)
 	if err != nil {
 		return nil, err
 	}
@@ -178,10 +198,9 @@ func GetSensorData(bucketName consts.BucketName, filter consts.BucketFilter) ([]
 	return out, nil
 }
 
-// GetUserData takes a key as a string and returns a User. If there is no user associated with the
-// key then an error is returned.
+// GetUserData takes a key as a string and returns a User.
 func GetUserData(key string) (*types.User, error) {
-	users, err := getFromNestedBucket(consts.User, consts.All)
+	users, err := getFromNestedBucket(consts.User, consts.All, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -196,4 +215,21 @@ func GetUserData(key string) (*types.User, error) {
 		}
 	}
 	return &u, err
+}
+
+// GetLogs returns all the logs within the time specified with the span (number of hours) parameter.
+func GetLogs(span int64) (*[]types.LogEntry, error) {
+	logs, err := getFromNestedBucket(consts.Log, consts.All, span)
+	if err != nil {
+		return nil, err
+	}
+	allLogs := []types.LogEntry{}
+	for _, log := range *logs {
+		l := types.LogEntry{}
+		if err := decode([]byte(log), &l); err != nil {
+			return nil, err
+		}
+		allLogs = append(allLogs, l)
+	}
+	return &allLogs, err
 }
