@@ -15,14 +15,14 @@ const (
 
 // GetPath returns the path of the file.
 func getPath() string {
-	path, err := filepath.Abs("../")
-
+	path, err := filepath.Abs(".")
+	base := filepath.Base(path)
+	dir := filepath.Dir(path)
 	if err != nil {
 		fmt.Printf("cannot find root. %s", err.Error())
 		os.Exit(2)
 	}
-	return path
-	// return strings.Join([]string{filepath.Dir(path), configFilePath}, "/")
+	return strings.Join([]string{dir, base}, "/")
 }
 
 // ReadConfigFile - reads the .yaml file and returns the []byte
@@ -36,6 +36,5 @@ func ReadConfigFile() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(len(fileByte), len(yamlfile))
 	return fileByte, nil
 }
