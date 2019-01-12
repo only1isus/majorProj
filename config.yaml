@@ -16,7 +16,7 @@ devices:
     rate: 0.7
     automatic: false
 
-  - name: fan
+  - name: coolingFan
     pins: {en: 21, in1: 20, in2: 16}
     onTime: 
     every: 
