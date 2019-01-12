@@ -3,11 +3,12 @@ package control
 import (
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/ghodss/yaml"
 	"github.com/only1isus/majorProj/config"
+	"github.com/only1isus/majorProj/consts"
+	"github.com/only1isus/majorProj/types"
 	"github.com/stianeikeland/go-rpio"
 	"github.com/yryz/ds18b20"
 )
@@ -19,12 +20,12 @@ type Devices struct {
 
 // OutputDevice ...
 type OutputDevice struct {
-	Name      string     `yaml:"name"`
-	Pins      DriverPins `yaml:"pins"`
-	Rate      float64    `yaml:"rate"`
-	OnTime    int64      `yaml:"onTime"`
-	Every     int64      `yaml:"every"`
-	Automatic bool       `yaml:"automatic"`
+	Name      consts.OutputDevice `yaml:"name"`
+	Pins      DriverPins          `yaml:"pins"`
+	Rate      float64             `yaml:"rate"`
+	OnTime    int64               `yaml:"onTime"`
+	Every     int64               `yaml:"every"`
+	Automatic bool                `yaml:"automatic"`
 }
 
 // DriverPins ...
@@ -41,9 +42,9 @@ type ADC struct {
 	Info string
 }
 
-type CirculationPump OutputDevice
-type Fan OutputDevice
-type PhPumpUp OutputDevice
+// type CirculationPump OutputDevice
+// type Fan OutputDevice
+// type PhPumpUp OutputDevice
 
 type Sensor struct {
 	Name  string
@@ -67,8 +68,7 @@ type AnalogSensors interface {
 // Get reads the config file and returns a list of nodes and error.
 // When using thOutputDeviceis method, check if the slice of node is nil and handle it to avoid
 // "invalid memory address or nil pointer dereference" error
-func (d *Devices) Get(deviceName string) (*OutputDevice, error) {
-	deviceName = strings.ToLower(deviceName)
+func (d *Devices) Get(deviceName consts.OutputDevice) (*OutputDevice, error) {
 	configFile, err := config.ReadConfigFile()
 	if err != nil {
 		return nil, err
@@ -104,42 +104,48 @@ func (t *Temperature) Get() (*float64, error) {
 	return &t.value, err
 }
 
+// Prepare gets the entry ready to be committed to the database
+func (t *Temperature) Prepare() (*types.SensorEntry, error) {
+	temp, err := t.Get()
+	if err != nil {
+		return nil, err
+	}
+	entry := types.SensorEntry{
+		Time:       time.Now().Unix(),
+		SensorType: consts.Temperature,
+		Value:      *temp,
+	}
+	return &entry, nil
+}
+
 // Maintain method tries to keep the temperature at the value passed to the method.
 func (t *Temperature) Maintain(value float64, fan *OutputDevice) error {
 	go func() error {
-
-		temp, err := t.Get()
-		if err != nil {
-			return err
-		}
-		log.Printf("Current temperature is %v", *temp)
 		for {
 			temp, err := t.Get()
 			if err != nil {
 				return err
 			}
 			val := *temp
-			log.Printf("Current temperature is %v", val)
+			log.Printf("Current temperature is %f", val)
 			if val >= value {
-				log.Printf("Turning on fan. Current temperature is %v, limit set to %v", val, value)
+				log.Printf("Turning on fan. Current temperature is %f, limit set to %f", val, value)
 				if err := fan.On(); err != nil {
 					return err
 				}
-				// maintainTemperature:
 				for {
-					// fan.On()
 					currentTemp, err := t.Get()
 					if err != nil {
 						return err
 					}
 					if value >= *currentTemp {
-						log.Printf("Temperature now at %v. Cooling for another 30s", *currentTemp)
+						log.Printf("Temperature now at %f. Cooling for another 30s", *currentTemp)
 						time.Sleep(30 * time.Second)
 						log.Println("Done")
 						if err := fan.Off(); err != nil {
 							return err
 						}
-						break //maintainTemperature
+						break
 					}
 					// time.Sleep(3 * time.Second)
 				}
@@ -149,6 +155,18 @@ func (t *Temperature) Maintain(value float64, fan *OutputDevice) error {
 		}
 	}()
 	return nil
+}
+
+// NewOutputDevice takes the name of the device and returns an instance of that device.
+// Note: to avoid errors check that the name of device in the config file is the same as
+// the ones in consts.go.
+func NewOutputDevice(name consts.OutputDevice) (*OutputDevice, error) {
+	d := Devices{}
+	device, err := d.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	return device, nil
 }
 
 // On method turns the fan on.
@@ -171,19 +189,11 @@ func (o OutputDevice) On() error {
 	in1.Output()
 	in2.Output()
 
-	en.Freq(19200000)
+	en.Freq(1920000)
 	en.DutyCycle(uint32(o.Rate*128), 128)
 	in1.Low()
 	in2.High()
 
-	// log := util.LogEntry{}
-	// log.Message = "Fan turned on"
-	// log.Success = true
-	// log.Time = time.Now().Unix()
-	// err = log.Add()
-	// if err != nil {
-	// 	fmt.Println(err)
-	// }
 	return nil
 }
 
@@ -207,14 +217,5 @@ func (o OutputDevice) Off() error {
 	in1.Low()
 	in2.Low()
 
-	// log := util.LogEntry{}
-	// log.Message = "Fan turned off"
-	// log.Success = true
-	// log.Time = time.Now().Unix()
-	// err = log.Add()
-
-	// if err != nil {
-	// 	fmt.Println(err)
-	// }
 	return nil
 }
