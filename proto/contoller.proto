@@ -2,8 +2,9 @@ syntax = "proto3";
 package controller;
 
 service Commit {
-    rpc CommitSensorData (sensorData) returns (successResponse) {}
+    rpc CommitSensorData (sensorData) returns (successResponse);
     rpc CommitLog(logData) returns (successResponse);
+    rpc Alert(alertData) returns (successResponse);
 }
 
 message sensorData {
@@ -16,4 +17,10 @@ message successResponse {
 
 message logData {
     bytes Data = 1;
+}
+
+message alertData {
+    string Name = 1; 
+    string Message = 2;
+    int64 Time = 3;
 }
