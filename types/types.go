@@ -11,18 +11,29 @@ type Log struct {
 
 // LogEntry ...
 type LogEntry struct {
+	Type    string `json:"type"`
 	Time    int64  `json:"time"`
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 }
 
+// DatabaseConnection ...
+type DatabaseConnection struct {
+	Port                  string `yaml:"port"`
+	Host                  string `yaml:"host"`
+	Secret                string `yaml:"secret"`
+	RequireAuthentication bool   `yaml:"requireAuthentication"`
+}
+
 // User ...
 type User struct {
-	CreatedAt int64  `json:"createdAt"`
-	Name      string `json:"name"`
-	Email     string `json:"email"`
-	Phone     string `json:"phone"`
-	Role      string `json:"role"`
+	CreatedAt int64  `json:"createdAt,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Email     string `json:"email,omitempty"`
+	Phone     string `json:"phone,omitempty"`
+	Role      string `json:"role,omitempty"`
+	Password  string `json:"password,omitempty"`
+	Key       string `json:"key,omitempty"`
 }
 
 // SensorEntry is the structure ofrhe sensor data
