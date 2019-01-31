@@ -1,10 +1,12 @@
 package control
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
 
+	"github.com/MichaelS11/go-dht"
 	"github.com/ghodss/yaml"
 	"github.com/only1isus/majorProj/config"
 	"github.com/only1isus/majorProj/consts"
@@ -54,6 +56,7 @@ type Sensor struct {
 
 // Temperature ...
 type Temperature Sensor
+type Humidity Sensor
 
 type PH ADC
 type EC ADC
@@ -105,7 +108,7 @@ func (t *Temperature) Get() (*float64, error) {
 }
 
 // Prepare gets the entry ready to be committed to the database
-func (t *Temperature) Prepare() (*types.SensorEntry, error) {
+func (t *Temperature) Prepare() (*[]byte, error) {
 	temp, err := t.Get()
 	if err != nil {
 		return nil, err
@@ -115,46 +118,103 @@ func (t *Temperature) Prepare() (*types.SensorEntry, error) {
 		SensorType: consts.Temperature,
 		Value:      *temp,
 	}
-	return &entry, nil
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return nil, err
+	}
+	return &data, nil
 }
 
 // Maintain method tries to keep the temperature at the value passed to the method.
-func (t *Temperature) Maintain(value float64, fan *OutputDevice) error {
-	go func() error {
+func (t *Temperature) Maintain(value float64, fan *OutputDevice, notify chan<- []byte) error {
+	go func(n chan<- []byte) error {
 		for {
 			temp, err := t.Get()
 			if err != nil {
+				n <- nil
 				return err
 			}
 			val := *temp
-			log.Printf("Current temperature is %f", val)
 			if val >= value {
 				log.Printf("Turning on fan. Current temperature is %f, limit set to %f", val, value)
 				if err := fan.On(); err != nil {
+					n <- nil
 					return err
 				}
+				onTime := time.Now()
 				for {
 					currentTemp, err := t.Get()
 					if err != nil {
+						n <- nil
 						return err
 					}
 					if value >= *currentTemp {
-						log.Printf("Temperature now at %f. Cooling for another 30s", *currentTemp)
-						time.Sleep(30 * time.Second)
+						time.Sleep(2 * time.Minute)
 						log.Println("Done")
 						if err := fan.Off(); err != nil {
+							n <- nil
 							return err
 						}
+						msg := types.LogEntry{
+							Message: fmt.Sprintf("Fan was turned on for %v minute(s). Upper limit set to %vC", int64(time.Now().Sub(onTime).Minutes()), value),
+							Success: true,
+							Time:    time.Now().Unix(),
+							Type:    string(consts.Log),
+						}
+						out, err := json.Marshal(msg)
+						if err != nil {
+							n <- nil
+							return err
+						}
+						n <- out
 						break
 					}
-					// time.Sleep(3 * time.Second)
 				}
 			}
 			time.Sleep(30 * time.Second)
-			// return nil
 		}
-	}()
+	}(notify)
 	return nil
+}
+
+func (h *Humidity) Get() (*float64, error) {
+	// sensorType := dht.DHT11
+	// _, humidity, _, err := dht.ReadDHTxxWithRetry(sensorType, 4, false, 10)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	err := dht.HostInit()
+	if err != nil {
+		return nil, err
+	}
+
+	dht, err := dht.NewDHT("GPIO13", dht.Fahrenheit, "")
+	if err != nil {
+		return nil, err
+	}
+	humidity, _, err := dht.Read()
+	if err != nil {
+		return nil, fmt.Errorf("Read error: %v", err)
+	}
+	hum := float64(humidity)
+	return &hum, err
+}
+
+func (h *Humidity) Prepare() (*[]byte, error) {
+	hum, err := h.Get()
+	if err != nil {
+		return nil, err
+	}
+	entry := types.SensorEntry{
+		Time:       time.Now().Unix(),
+		SensorType: consts.Humidity,
+		Value:      *hum,
+	}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return nil, err
+	}
+	return &data, nil
 }
 
 // NewOutputDevice takes the name of the device and returns an instance of that device.
