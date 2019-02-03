@@ -1,13 +1,9 @@
 databaseConnection:
- - port: 8001
-   host: http://localhost
-   requireAuthentication: false
+  port: 8001
+  host: localhost
+  requireAuthentication: false
+  secret: SECRET-KEY
 
-piConfig:
- - mode: BOARD
-   username: isus
-   password: 123456
-   
 devices:
   - name: light
     pin: 16

@@ -1,3 +1,8 @@
 data
 config.yaml
 Makefile
+farmcontrol
+majorProj
+server
+*.db
+*.env

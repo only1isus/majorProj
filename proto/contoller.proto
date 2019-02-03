@@ -1,0 +1,22 @@
+syntax = "proto3";
+package controller;
+
+service Commit {
+    rpc CommitSensorData (sensorData) returns (successResponse);
+    rpc CommitLog(logData) returns (successResponse);
+    // rpc Alert(alertData) returns (successResponse);
+}
+
+message sensorData {
+    bytes Data  = 1;
+    bytes Key = 2;
+}
+
+message successResponse {
+    bool Success = 1;
+}
+
+message logData {
+    bytes Data = 1;
+    bytes Key = 2;
+}
