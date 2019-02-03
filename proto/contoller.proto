@@ -4,11 +4,12 @@ package controller;
 service Commit {
     rpc CommitSensorData (sensorData) returns (successResponse);
     rpc CommitLog(logData) returns (successResponse);
-    rpc Alert(alertData) returns (successResponse);
+    // rpc Alert(alertData) returns (successResponse);
 }
 
 message sensorData {
     bytes Data  = 1;
+    bytes Key = 2;
 }
 
 message successResponse {
@@ -17,10 +18,5 @@ message successResponse {
 
 message logData {
     bytes Data = 1;
-}
-
-message alertData {
-    string Name = 1; 
-    string Message = 2;
-    int64 Time = 3;
+    bytes Key = 2;
 }
