@@ -45,7 +45,7 @@ func getdbpath() string {
 func initialize() *bolt.DB {
 	db, err := bolt.Open(getdbpath(), 0644, nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("go %v, location %s", err, getdbpath())
 	}
 	return db
 }
@@ -70,7 +70,7 @@ func decode(data []byte, holder interface{}) error {
 
 // nestedEntry function takes a bucketname
 // bucketName is rootbucket as a string
-func nestedEntry(bucketName consts.BucketName, key []byte, value *[]byte) error {
+func nestedEntry(rootBucket []byte, bucketName consts.BucketName, key []byte, value *[]byte) error {
 	rootName := []byte(strings.ToUpper(string(bucketName)))
 	db := initialize()
 	defer db.Close()
@@ -94,7 +94,8 @@ func nestedEntry(bucketName consts.BucketName, key []byte, value *[]byte) error 
 			}
 
 		} else {
-			root, err := tx.CreateBucketIfNotExists(rootName)
+			rb := tx.Bucket(rootBucket)
+			root, err := rb.CreateBucketIfNotExists(rootName)
 			if err != nil {
 				return err
 			}
@@ -115,18 +116,18 @@ func nestedEntry(bucketName consts.BucketName, key []byte, value *[]byte) error 
 // error. The key, a bucket within a bucket, can be any unique string. If the key is passed
 // as time.Now().Format(time.RFC3339) then the data can be filtered when when ready to be
 // retrieved.
-func AddEntry(bucketName consts.BucketName, key []byte, value interface{}) error {
+func AddEntry(root []byte, bucketName consts.BucketName, key []byte, value interface{}) error {
 	encoded, err := encode(&value)
 	if err != nil {
 		fmt.Printf("cannot encode data entered, %v ", err)
 	}
-	if err := nestedEntry(bucketName, key, encoded); err != nil {
+	if err := nestedEntry(root, bucketName, key, encoded); err != nil {
 		return err
 	}
 	return nil
 }
 
-func getFromNestedBucket(bucketName consts.BucketName, filter consts.BucketFilter, span int64) (*[]string, error) {
+func getFromNestedBucket(rootBucket []byte, bucketName consts.BucketName, filter consts.BucketFilter, span int64) (*[]string, error) {
 	// to find the timespan, the time is taken and then the max and min times found.
 	timeNow := time.Now().Unix()
 	maxTime := timeNow + (span * 3600)
@@ -138,20 +139,37 @@ func getFromNestedBucket(bucketName consts.BucketName, filter consts.BucketFilte
 	max := maxTimeUnix.Format(time.RFC3339)
 	min := minTimeUnix.Format(time.RFC3339)
 
-	rootBucket := []byte(strings.ToUpper(string(bucketName)))
+	bucket := []byte(strings.ToUpper(string(bucketName)))
 	out := new([]string)
 	db := initialize()
 	defer db.Close()
 
 	err := db.View(func(tx *bolt.Tx) error {
 		// check if bucket is empty, if it is then return nil otherwise the root.ForEach function panics
-		root := tx.Bucket(rootBucket)
+		rb := tx.Bucket(bytes.ToUpper(rootBucket))
+		if rb == nil && bucketName == consts.User {
+			root := tx.Bucket(bytes.ToUpper([]byte(consts.User)))
+			if root == nil {
+				return fmt.Errorf("bucket Empty")
+			}
+			err := root.ForEach(func(k, v []byte) error {
+				if bytes.Contains(v, []byte(filter)) {
+					*out = append(*out, string(v))
+				}
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			return nil
+			// return fmt.Errorf("check to make sure the Bucket Name and Root Bucket Name are correct")
+		}
+		root := rb.Bucket([]byte(bucket))
 		if root == nil {
 			return nil
 		}
-
 		// if the timespan is 0, then find and return all the entries filtered by const.BucketFilter
-		if span == 0 {
+		if span == 0 || rootBucket == nil {
 			err := root.ForEach(func(k, v []byte) error {
 				if bytes.Contains(v, []byte(filter)) {
 					*out = append(*out, string(v))
@@ -182,8 +200,8 @@ func getFromNestedBucket(bucketName consts.BucketName, filter consts.BucketFilte
 // GetSensorData returns a list of the sensor data
 // bucketName is the name of the bucket the data should be added to. To choose which type
 // of sensor data is returned set a filter.
-func GetSensorData(filter consts.BucketFilter, span int64) ([]types.SensorEntry, error) {
-	d, err := getFromNestedBucket(consts.Sensor, filter, span)
+func GetSensorData(rootBucket []byte, filter consts.BucketFilter, span int64) ([]types.SensorEntry, error) {
+	d, err := getFromNestedBucket(rootBucket, consts.Sensor, filter, span)
 	if err != nil {
 		return nil, err
 	}
@@ -200,12 +218,14 @@ func GetSensorData(filter consts.BucketFilter, span int64) ([]types.SensorEntry,
 
 // GetUserData takes a key as a string and returns a User.
 func GetUserData(key string) (*types.User, error) {
-	users, err := getFromNestedBucket(consts.User, consts.All, 0)
+	users, err := getFromNestedBucket(nil, consts.User, consts.All, 0)
 	if err != nil {
 		return nil, err
 	}
 	u := types.User{}
+
 	for _, user := range *users {
+
 		u := types.User{}
 		if err := decode([]byte(user), &u); err != nil {
 			return nil, err
@@ -218,8 +238,8 @@ func GetUserData(key string) (*types.User, error) {
 }
 
 // GetLogs returns all the logs within the time specified with the span (number of hours) parameter.
-func GetLogs(span int64) (*[]types.LogEntry, error) {
-	logs, err := getFromNestedBucket(consts.Log, consts.All, span)
+func GetLogs(rootBucket []byte, span int64) (*[]types.LogEntry, error) {
+	logs, err := getFromNestedBucket(rootBucket, consts.Log, consts.All, span)
 	if err != nil {
 		return nil, err
 	}
@@ -232,4 +252,23 @@ func GetLogs(span int64) (*[]types.LogEntry, error) {
 		allLogs = append(allLogs, l)
 	}
 	return &allLogs, err
+}
+
+// CreateBucket takes a name and creates a bucket if none exists
+func CreateBucket(bucketName string) error {
+	rootName := []byte(bucketName)
+	db := initialize()
+	defer db.Close()
+
+	err := db.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucket(rootName)
+		if err != nil {
+			return fmt.Errorf("the key provided already exists")
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return nil
 }
