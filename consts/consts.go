@@ -1,6 +1,7 @@
 package consts
 
 type BucketName string
+type OutputDevice string
 type BucketFilter string
 
 const (
@@ -14,4 +15,6 @@ const (
 	Sensor BucketName = "sensor"
 	User   BucketName = "user"
 	Log    BucketName = "log"
+
+	CoolingFan OutputDevice = "coolingFan"
 )
