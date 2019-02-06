@@ -38,7 +38,7 @@ const (
 
 // hard coded for testing reasons. ENV will be used eventually
 func getSecret() ([]byte, error) {
-	if err := godotenv.Load("../.env"); err != nil {
+	if err := godotenv.Load(".env"); err != nil {
 		return nil, err
 	}
 	return []byte(os.Getenv("SIGKEY")), nil
@@ -47,21 +47,25 @@ func getSecret() ([]byte, error) {
 func register(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		respondWithError(w, http.StatusBadRequest, fmt.Errorf("something went wrong parsing body"))
+		return
 	}
 
 	var u types.User
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, fmt.Errorf("something went wrong parsing the json data"))
+		return
 	}
 
 	if err := json.Unmarshal(body, &u); err != nil {
 		respondWithError(w, http.StatusInternalServerError, fmt.Errorf("something went wrong parsing the json data"))
+		return
 	}
 
 	pword, err := hashPassword(u.Password)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, err)
+		return
 	}
 
 	// formatting the data to be saved in the database.
@@ -139,22 +143,29 @@ func getSensorData(w http.ResponseWriter, r *http.Request) {
 		data, err := db.GetSensorData([]byte(key), consts.Humidity, int64(s))
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, err)
+			return
 		}
 		sendResponse(w, data)
+		return
 	case "temperature":
 		data, err := db.GetSensorData([]byte(key), consts.Temperature, int64(s))
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, err)
+			return
 		}
 		sendResponse(w, data)
+		return
 	case "all":
 		data, err := db.GetSensorData([]byte(key), consts.All, int64(s))
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, err)
+			return
 		}
 		sendResponse(w, data)
+		return
 	default:
 		respondWithError(w, http.StatusNotFound, fmt.Errorf("page not found"))
+		return
 	}
 }
 
@@ -165,6 +176,7 @@ func getLogs(w http.ResponseWriter, r *http.Request) {
 	s, err := strconv.Atoi(span)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, fmt.Errorf("make sure the timespan is an integer"))
+		return
 	}
 
 	claims := getClaims(w, r)
@@ -172,8 +184,10 @@ func getLogs(w http.ResponseWriter, r *http.Request) {
 	logs, err := db.GetLogs([]byte(key), int64(s))
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, fmt.Errorf("Something went wrong getting the data requested"))
+		return
 	}
 	sendResponse(w, logs)
+	return
 }
 
 // changeSettings edits the config file of the system
@@ -190,6 +204,7 @@ func userinfo(w http.ResponseWriter, r *http.Request) {
 	u, err := db.GetUserData(email)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, fmt.Errorf("user not found"))
+		return
 	}
 	userInfo := types.User{
 		Key:       (*u).Key,
@@ -199,24 +214,29 @@ func userinfo(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: (*u).CreatedAt,
 	}
 	sendResponse(w, &userInfo)
+	return
 }
 
 func getToken(w http.ResponseWriter, r *http.Request) {
 	email, password, _ := r.BasicAuth()
 	if email == "" || password == "" {
 		respondWithError(w, http.StatusUnauthorized, fmt.Errorf("please add username and password"))
+		return
 	}
 	user, err := db.GetUserData(email)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, err)
+		return
 	}
 
 	if isSame := comparePasswords([]byte((*user).Password), []byte(password)); !isSame {
 		respondWithError(w, http.StatusUnauthorized, fmt.Errorf("password or username not correct"))
+		return
 	}
 	validToken, err := generateToken(user)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, fmt.Errorf("not authorized"))
+		return
 	}
 	sendResponse(w, validToken)
 	return
@@ -247,6 +267,7 @@ func isProtected(endpoint func(http.ResponseWriter, *http.Request)) http.Handler
 		if r.Header["Token"] != nil {
 			if r.Header["Token"][0] == "" {
 				respondWithError(w, http.StatusUnauthorized, fmt.Errorf("not authorized"))
+				return
 			}
 			token, err := jwt.Parse(r.Header["Token"][0], func(token *jwt.Token) (interface{}, error) {
 				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -261,12 +282,14 @@ func isProtected(endpoint func(http.ResponseWriter, *http.Request)) http.Handler
 			})
 			if err != nil {
 				respondWithError(w, http.StatusUnauthorized, err)
+				return
 			}
 			if token.Valid {
 				endpoint(w, r)
 			}
 		} else {
 			respondWithError(w, http.StatusUnauthorized, fmt.Errorf("not authorized"))
+			return
 		}
 	})
 }
@@ -352,9 +375,6 @@ func main() {
 	allowedOrigins := handlers.AllowedOrigins([]string{"*"})
 	allowedMethods := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "OPTIONS"})
 
-	if err := godotenv.Load("../.env"); err != nil {
-		log.Println("there was a problem reading the env file.")
-	}
 	router := mux.NewRouter()
 	log.Printf("server running pn port %s...", port)
 	router.HandleFunc("/register", register).Methods("POST")
