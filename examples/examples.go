@@ -2,13 +2,33 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/only1isus/majorProj/consts"
+	"github.com/only1isus/majorProj/types"
 
 	"github.com/only1isus/majorProj/control"
-	"github.com/only1isus/majorProj/database"
 )
+
+func recordAndCommit(t *control.Temperature) error {
+	temp, err := (*t).Get()
+	if err != nil {
+		return err
+	}
+
+	entry := types.SensorEntry{
+		Time:       time.Now().Unix(),
+		SensorType: consts.Temperature,
+		Value:      *temp,
+	}
+
+	err = db.AddEntry(consts.Sensor, []byte(time.Now().Format(time.RFC3339)), entry)
+	if err != nil {
+		return err
+	}
+	return nil
+}
 
 func main() {
 	// // get the tempature
@@ -48,4 +68,18 @@ func main() {
 	if err := t.Maintain(29.6, fan); err != nil {
 		fmt.Println(err)
 	}
+
+	// collect data every 5 seconds and commit to the database
+	temperature := control.Temperature{}
+
+	go func(temp *control.Temperature) {
+		for {
+			t := time.NewTimer(time.Minute * 5)
+			defer t.Stop()
+			<-t.C
+			if err := recordAndCommit(temp); err != nil {
+				log.Printf("got an error while adding to database %v", err.Error())
+			}
+		}
+	}(&temperature)
 }
