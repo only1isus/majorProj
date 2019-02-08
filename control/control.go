@@ -82,7 +82,6 @@ func (d *Devices) Get(deviceName consts.OutputDevice) (*OutputDevice, error) {
 	}
 	for _, device := range d.Devices {
 		if device.Name == deviceName {
-			fmt.Println(device)
 			return &device, nil
 		}
 	}
@@ -156,10 +155,10 @@ func (t *Temperature) Maintain(value float64, fan *OutputDevice, notify chan<- [
 							return err
 						}
 						msg := types.LogEntry{
-							Message: fmt.Sprintf("Fan was turned on for %v minute(s). Upper limit set to %vC", int64(time.Now().Sub(onTime).Minutes()), value),
+							Message: fmt.Sprintf("Fan was turned on for %v minute(s). Upper limit set to %vc", int64(time.Now().Sub(onTime).Minutes()), value),
 							Success: true,
 							Time:    time.Now().Unix(),
-							Type:    string(consts.Log),
+							Type:    "control",
 						}
 						out, err := json.Marshal(msg)
 						if err != nil {
