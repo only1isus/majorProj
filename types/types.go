@@ -47,6 +47,12 @@ type User struct {
 	Key       string `json:"key,omitempty"`
 }
 
+type FarmDetails struct {
+	CropType     string `json:"cropType"`
+	MaturityTime int64  `json:"maturityTime"`
+	Configured   bool   `json:"configured"`
+}
+
 // SensorEntry is the structure ofrhe sensor data
 type SensorEntry struct {
 	Time       int64               `json:"time"`
