@@ -4,37 +4,62 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/only1isus/majorProj/types"
 )
 
-var userTestData = []struct {
-	username       string
-	password       string
-	endpoint       string
-	endpointName   string
-	succesAuthResp int
-	succesGetResp  int
+type auth struct {
+	username string
+	password string
+	response int
+}
+
+type endpoint struct {
+	reqType  string
+	endpoint string
+	name     string
+	response int
+}
+
+var testData = []struct {
+	userAuth            *auth
+	endpointInformation endpoint
+	omitToken           bool
+	data                interface{}
 }{
-	{"test123@gmai.com", "password", "api/sensor/?sensortype=temperature&timespan=1", "sensor", http.StatusUnauthorized, http.StatusOK},
-	{"test123@gmail.com", "password", "api/sensor/?sensortype=temperature&timespan=1", "sensor", http.StatusUnauthorized, http.StatusOK},
-	{"test123@gmail.com", "qwerty", "api/sensor/?sensortypetemperature&timespan=1", "sensor", http.StatusOK, http.StatusNotFound},
-	{"test123@gmail.com", "qwerty", "api/sensor/?sensortype=temperature&timespan=1", "sensor", http.StatusOK, http.StatusOK},
-	{"test123@gmail.com", "qwerty", "api/logs/?timespan=1", "logs", http.StatusOK, http.StatusOK},
-	{"test123@gmail.com", "qwerty", "api/logs/?timespan=e", "logs", http.StatusOK, http.StatusBadRequest},
-	{"", "qwerty", "api/sensor/?sensortype=%s&timespan=1", "sensor", http.StatusUnauthorized, http.StatusBadRequest},
-	{"", "", "api/sensor/?sensortype=humidity&timespan=1", "sensor", http.StatusUnauthorized, http.StatusBadRequest},
-	{"", "", "userinfo", "userinfo", http.StatusUnauthorized, http.StatusOK},
-	{"rom@gmail.com", "", "userinfo", "userinfo", http.StatusUnauthorized, http.StatusOK},
-	{"", "password", "userinfo", "userinfo", http.StatusUnauthorized, http.StatusOK},
-	{"test123@gmail.com", "qwerty", "userinfo", "userinfo", http.StatusOK, http.StatusOK},
+
+	{
+		userAuth:            &auth{username: "test123@gmail.com", password: "password", response: http.StatusUnauthorized},
+		endpointInformation: endpoint{reqType: "get"},
+	},
+	{
+		userAuth:            &auth{username: "test14@gmail.com", password: "qwerty", response: http.StatusOK},
+		endpointInformation: endpoint{endpoint: "api/sensor/?sensortype=temperature&timepan=1", name: "sensor", response: http.StatusBadRequest, reqType: "get"},
+		omitToken:           false,
+	},
+	{
+		userAuth:            &auth{username: "test123@gmail.com", password: "qwerty", response: http.StatusOK},
+		endpointInformation: endpoint{endpoint: "api/farmdetails", name: "farmdetails", reqType: "post", response: http.StatusOK},
+		data: types.FarmDetails{
+			Configured:   true,
+			CropType:     "lettuce",
+			MaturityTime: 37,
+		},
+	},
+	{
+		userAuth:            &auth{username: "test123@gmail.com", password: "qwerty", response: http.StatusOK},
+		endpointInformation: endpoint{endpoint: "api/farmdetails", name: "farmdetails", response: http.StatusOK, reqType: "get"},
+		omitToken:           false,
+	},
 }
 
 func authenticate(username, password string) (string, int, error) {
 	req := httptest.NewRequest("GET", "http://192.168.0.18:8080/token", nil)
 	req.SetBasicAuth(username, password)
-
 	w := httptest.NewRecorder()
 	getToken(w, req)
 	res := w.Result()
@@ -49,40 +74,110 @@ func authenticate(username, password string) (string, int, error) {
 	return token, res.StatusCode, nil
 }
 
-func TestEndpoints(t *testing.T) {
-	for _, user := range userTestData {
-		t.Run(user.username, func(t *testing.T) {
-			jwtToken, code, _ := authenticate(user.username, user.password)
+func TestProtectedEndpoints(t *testing.T) {
+	s := server()
+	svr := httptest.NewServer(s.Handler)
+	defer svr.Close()
 
-			if code != user.succesAuthResp {
-				t.Errorf("got %v instead of %v. endpoint %s.", code, user.succesAuthResp, user.endpoint)
+	for _, td := range testData {
+		t.Run(td.endpointInformation.name, func(t *testing.T) {
+
+			if td.endpointInformation.reqType == "" {
+				t.Fatal("no request type specified")
+			}
+
+			jwtToken, code, err := authenticate(td.userAuth.username, td.userAuth.password)
+			if err != nil {
+				t.Log("got an error trying to authenticate the user")
+			}
+			r := &http.Request{}
+			if code != td.userAuth.response {
+				t.Errorf("got %v instead of %v.", code, td.userAuth.response)
+			}
+
+			if td.endpointInformation.reqType == "get" {
+				req := httptest.NewRequest("GET", fmt.Sprintf("%s%s", svr.URL, td.endpointInformation.endpoint), nil)
+				req.Header.Add("Token", jwtToken)
+				r = req
+			}
+			if td.endpointInformation.reqType == "post" {
+				if td.data == nil {
+					t.Fatalf("data needs to be added to run this test. endpoint %s", td.endpointInformation.endpoint)
+				}
+				out, err := json.Marshal(td.data)
+				if err != nil {
+					t.Error("couldn't marshal the json data")
+				}
+				req := httptest.NewRequest("POST", fmt.Sprintf("%s%s", svr.URL, td.endpointInformation.endpoint), bytes.NewReader(out))
+				req.Header.Add("Token", jwtToken)
+				req.Header.Set("Content-Type", "application/json")
+				r = req
 			}
 			if jwtToken != "" {
-				req := httptest.NewRequest("GET", fmt.Sprintf("http://192.168.0.18:8080/%s", user.endpoint), nil)
-				req.Header.Add("Token", jwtToken)
+				if td.omitToken {
+					r.Header.Del("Token")
+				}
+				// h := &http.Response{}
 				w := httptest.NewRecorder()
-				if user.endpointName == "logs" {
-					getLogs(w, req)
+				if td.endpointInformation.reqType == "get" {
+					h := http.HandlerFunc(
+						isProtected(func(w http.ResponseWriter, r *http.Request) {
+							if td.endpointInformation.name == "logs" {
+								getLogs(w, r)
+							}
+							if td.endpointInformation.name == "userinfo" {
+								userinfo(w, r)
+							}
+							if td.endpointInformation.name == "sensor" {
+								getSensorData(w, r)
+							}
+							if td.endpointInformation.name == "farmdetails" {
+								getFarmDetails(w, r)
+							}
+						}).(http.HandlerFunc),
+					)
+					h.ServeHTTP(w, r)
+					resp := w.Result()
+					if resp.StatusCode != td.endpointInformation.response {
+						t.Errorf("got status code %v instead of %v while requesting %v", resp.StatusCode, td.endpointInformation.response, td.endpointInformation.name)
+
+						b, err := ioutil.ReadAll(resp.Body)
+						if err != nil {
+							t.Log(err.Error())
+						}
+						t.Log(string(b))
+					}
 				}
-				if user.endpointName == "userinfo" {
-					userinfo(w, req)
-				}
-				if user.endpointName == "sensor" {
-					getSensorData(w, req)
-				}
-				resp := w.Result()
-				if resp.StatusCode != user.succesGetResp {
-					t.Errorf("got status code %v instead of %v while requesting %v", resp.StatusCode, user.succesGetResp, user.endpoint)
+				if td.endpointInformation.reqType == "post" {
+					h := http.HandlerFunc(
+						isProtected(func(w http.ResponseWriter, r *http.Request) {
+							if td.endpointInformation.name == "farmdetails" {
+								addFarmDetails(w, r)
+							}
+							if td.endpointInformation.name == "register" {
+								register(w, r)
+							}
+						}).(http.HandlerFunc),
+					)
+					h.ServeHTTP(w, r)
+					resp := w.Result()
+					if resp.StatusCode != td.endpointInformation.response {
+						t.Errorf("got status code %v instead of %v while requesting %v", resp.StatusCode, td.endpointInformation.response, td.endpointInformation.name)
+						b, err := ioutil.ReadAll(resp.Body)
+						if err != nil {
+							t.Log(err.Error())
+						}
+						t.Log(string(b))
+					}
 				}
 			}
-
 		})
 	}
 }
 func TestRegister(t *testing.T) {
 	data := map[string]string{
 		"name":     "jon doe",
-		"email":    "test@gmail.com",
+		"email":    "test14@gmail.com",
 		"phone":    "8785980103",
 		"password": "qwerty",
 	}
@@ -96,6 +191,6 @@ func TestRegister(t *testing.T) {
 	w := httptest.NewRecorder()
 	register(w, req)
 	if w.Code != http.StatusOK {
-		t.Errorf("got %v instead", w.Code)
+		t.Errorf("got %v instead, %v", w.Code, w.Body.String())
 	}
 }

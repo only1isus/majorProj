@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -10,9 +11,10 @@ import (
 
 var info = []types.User{
 	types.User{
-		Email: "testing123@gmail.com",
-		Name:  "adam Doe",
-		Phone: "00000000",
+		Email:    "testing1235@gmail.com",
+		Name:     "adam Doe",
+		Phone:    "00000000",
+		Password: "qwerty",
 	},
 	types.User{
 		Email: "testagain@gmail.com",
@@ -51,31 +53,13 @@ var sensorData = []types.SensorEntry{
 }
 
 var sensorTT = []struct {
-	name     consts.BucketFilter
-	expected int
+	name consts.BucketFilter
 }{
-	{name: consts.Humidity, expected: 5},
-	{name: consts.WaterLevel, expected: 1},
-	{name: consts.Temperature, expected: 2},
-	{name: consts.PH, expected: 2},
-	{name: consts.All, expected: 10},
-}
-
-func TestCreateBucket(t *testing.T) {
-	if err := CreateBucket("1GYJU7OD2KFJRBUWDPP5I8P5VCL"); err != nil {
-		t.Fail()
-	}
-}
-func TestWriteToDatabase(t *testing.T) {
-	for _, test := range info {
-		t.Run(test.Name, func(t *testing.T) {
-			err := AddEntry(nil, consts.User, []byte(test.Email), test)
-			if err != nil {
-				t.Error("failed. User already exists")
-			}
-
-		})
-	}
+	{name: consts.Humidity},
+	{name: consts.WaterLevel},
+	{name: consts.Temperature},
+	{name: consts.PH},
+	{name: consts.All},
 }
 
 func TestGetFromDatabase(t *testing.T) {
@@ -88,6 +72,7 @@ func TestGetFromDatabase(t *testing.T) {
 			if user.Email != test.Email {
 				t.Errorf("user %v not found", test.Email)
 			}
+			t.Log(*user)
 		})
 	}
 }
@@ -95,9 +80,9 @@ func TestWriteSenorData(t *testing.T) {
 	for _, test := range sensorData {
 		time.Sleep(2 * time.Second) // just to makes sure the data isn't overwritten
 		t.Run(string(test.SensorType), func(t *testing.T) {
-			err := AddEntry([]byte("1GYJU7OD2KFJRBUWDPP5I8P5VCL"), consts.Sensor, []byte(time.Now().Format(time.RFC3339)), test)
+			err := AddSensorEntry([]byte("1GYJU7OD2KFJRBUWDPP5I8P5VCL"), []byte(time.Now().Format(time.RFC3339)), test)
 			if err != nil {
-				t.Fail()
+				t.Fatalf(err.Error())
 			}
 		})
 	}
@@ -105,18 +90,20 @@ func TestWriteSenorData(t *testing.T) {
 
 func TestGetSenorData(t *testing.T) {
 	for _, test := range sensorTT {
-
+		// time.Sleep(time.Second * 2)
 		t.Run(string(test.name), func(t *testing.T) {
 			data, err := GetSensorData([]byte("1GYJU7OD2KFJRBUWDPP5I8P5VCL"), test.name, 0)
 			if err != nil {
-				t.Fail()
+				t.Fatalf("got an error trying to get data %v", err.Error())
 			}
-			if len(data) != test.expected {
-				t.Errorf("expeced %v got %v instead", test.expected, len(data))
-			}
+			// if (*data)[0].SensorType != test.name {
+			// 	t.Errorf("expeced %v got %v instead", test.name, (*data)[0].SensorType)
+			// }
+			t.Log(len(*data))
 		})
 	}
 }
+
 func TestWriteLog(t *testing.T) {
 	l := types.LogEntry{
 		Message: "hello I am romaine",
@@ -124,7 +111,7 @@ func TestWriteLog(t *testing.T) {
 		Time:    time.Now().Unix(),
 	}
 
-	err := AddEntry([]byte("1GYJU7OD2KFJRBUWDPP5I8P5VCL"), consts.Log, []byte(time.Now().Format(time.RFC3339)), l)
+	err := AddLogEntry([]byte("1GYJU7OD2KFJRBUWDPP5I8P5VCL"), []byte(time.Now().Format(time.RFC3339)), l)
 	if err != nil {
 		t.Fail()
 	}
@@ -137,5 +124,31 @@ func TestGetLogs(t *testing.T) {
 	}
 	if len(*logs) == 0 {
 		t.Errorf("cannot get the logs")
+	}
+	t.Log(len(*logs))
+}
+
+func TestFarmDetails(t *testing.T) {
+	fd := &types.FarmDetails{
+		Configured:   true,
+		CropType:     "lettuce",
+		MaturityTime: 23,
+	}
+	out, err := json.Marshal(fd)
+	if err != nil {
+		t.Fatalf("cannot format the data")
+	}
+	if err := AddFarmEntry([]byte("1GYJU7OD2KFJRBUWDPP5I8P5VCL"), []byte("1GYJU7OD2KFJRBUWDPP5I8P5VCL"), out); err != nil {
+		t.Fatalf("got an error adding farm details to the database, %v", err)
+	}
+}
+
+func TestGetFarmDetails(t *testing.T) {
+	fd, err := GetFarmDetails([]byte("1GYJU7OD2KFJRBUWDPP5I8P5VCL"))
+	if err != nil {
+		t.Fatalf("got an error adding farm details to the database, %v", err)
+	}
+	if (*fd).CropType != "lettuce" {
+		t.Fatal("failed, the information is not the same.", fd)
 	}
 }

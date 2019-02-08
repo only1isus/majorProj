@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -76,7 +75,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 	key := ksuid.New()
 	u.Key = strings.ToUpper(key.String())
 
-	err = db.AddEntry(nil, consts.User, []byte(u.Email), u)
+	err = db.AddUserEntry(u)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, fmt.Errorf("something went wrong %v ", err.Error()))
 	}
@@ -131,7 +130,7 @@ func getSensorData(w http.ResponseWriter, r *http.Request) {
 	span := query.Get("timespan")
 	sensorType := query.Get("sensortype")
 	s, err := strconv.Atoi(span)
-	if err != nil {
+	if err != nil || span == "" || sensorType == "" {
 		respondWithError(w, http.StatusBadRequest, fmt.Errorf("check the parameters being passed"))
 	}
 
@@ -217,6 +216,47 @@ func userinfo(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func addFarmDetails(w http.ResponseWriter, r *http.Request) {
+	claims := getClaims(w, r)
+	key := claims["key"].(string)
+	fd := types.FarmDetails{}
+	(&fd).Configured = true
+
+	out, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Errorf("something went wrong decoding the data"))
+		return
+	}
+
+	if err := json.Unmarshal(out, &fd); err != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Errorf("something went wrong decoding the data"))
+		return
+	}
+	processesData, err := json.Marshal(fd)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Errorf("something went wrong decoding the data"))
+		return
+	}
+
+	if err := db.AddFarmEntry([]byte(key), []byte(key), processesData); err != nil {
+		respondWithError(w, http.StatusInternalServerError, err)
+		return
+	}
+	return
+}
+
+func getFarmDetails(w http.ResponseWriter, r *http.Request) {
+	claims := getClaims(w, r)
+	key := claims["key"].(string)
+	fd, err := db.GetFarmDetails([]byte(key))
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err)
+		return
+	}
+	sendResponse(w, *fd)
+	return
+}
+
 func getToken(w http.ResponseWriter, r *http.Request) {
 	email, password, _ := r.BasicAuth()
 	if email == "" || password == "" {
@@ -244,7 +284,6 @@ func getToken(w http.ResponseWriter, r *http.Request) {
 
 func generateToken(u *types.User) (string, error) {
 	token := jwt.New(jwt.SigningMethodHS256)
-
 	claims := token.Claims.(jwt.MapClaims)
 
 	claims["authorized"] = true
@@ -266,14 +305,13 @@ func isProtected(endpoint func(http.ResponseWriter, *http.Request)) http.Handler
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header["Token"] != nil {
 			if r.Header["Token"][0] == "" {
-				respondWithError(w, http.StatusUnauthorized, fmt.Errorf("not authorized"))
+				respondWithError(w, http.StatusUnauthorized, fmt.Errorf("No token provided"))
 				return
 			}
 			token, err := jwt.Parse(r.Header["Token"][0], func(token *jwt.Token) (interface{}, error) {
 				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-					respondWithError(w, http.StatusUnauthorized, fmt.Errorf("failed to authenticate"))
+					return nil, fmt.Errorf("failed to authenticate")
 				}
-
 				sigKey, err := getSecret()
 				if err != nil {
 					return "", fmt.Errorf("Something Went Wrong: %s", err.Error())
@@ -285,10 +323,22 @@ func isProtected(endpoint func(http.ResponseWriter, *http.Request)) http.Handler
 				return
 			}
 			if token.Valid {
+				claims := token.Claims.(jwt.MapClaims)
+				email := claims["client"].(string)
+				user, err := db.GetUserData(email)
+				if err != nil {
+					respondWithError(w, http.StatusUnauthorized, fmt.Errorf("trouble verifying user credentials"))
+					return
+				}
+				if strings.ToLower(user.Email) != email {
+					respondWithError(w, http.StatusUnauthorized, fmt.Errorf("invalid token"))
+					return
+				}
 				endpoint(w, r)
+				return
 			}
 		} else {
-			respondWithError(w, http.StatusUnauthorized, fmt.Errorf("not authorized"))
+			respondWithError(w, http.StatusUnauthorized, fmt.Errorf("No token header"))
 			return
 		}
 	})
@@ -317,7 +367,7 @@ func (s *svr) CommitSensorData(ctx context.Context, data *controller.SensorData)
 	if err != nil {
 		return &controller.SuccessResponse{Success: false}, err
 	}
-	err = db.AddEntry(data.Key, consts.Sensor, []byte(time.Now().Format(time.RFC3339)), d)
+	err = db.AddSensorEntry(data.Key, []byte(time.Now().Format(time.RFC3339)), d)
 	if err != nil {
 		return &controller.SuccessResponse{Success: false}, err
 	}
@@ -329,78 +379,41 @@ func (s *svr) CommitLog(ctx context.Context, data *controller.LogData) (*control
 	if err := json.Unmarshal(data.Data, &l); err != nil {
 		return &controller.SuccessResponse{Success: false}, err
 	}
-	err := db.AddEntry(data.Key, consts.Log, []byte(time.Now().Format(time.RFC3339)), l)
+	err := db.AddLogEntry(data.Key, []byte(time.Now().Format(time.RFC3339)), l)
 	if err != nil {
 		return &controller.SuccessResponse{Success: false}, err
 	}
 	return &controller.SuccessResponse{Success: true}, nil
 }
 
-func certReqFunc(certfile, keyfile string) func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-	c, err := getCert(certfile, keyfile)
-	return func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-		if err != nil {
-			return nil, err
-		}
-		return &c, nil
-	}
-}
-
-func clientCertReqFunc(certfile, keyfile string) func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-	c, err := getCert(certfile, keyfile)
-
-	return func(certReq *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-		if err != nil || certfile == "" {
-			return nil, err
-		}
-		return &c, nil
-	}
-}
-
-func getCert(certfile, keyfile string) (c tls.Certificate, err error) {
-	if certfile != "" && keyfile != "" {
-		c, err = tls.LoadX509KeyPair(certfile, keyfile)
-		if err != nil {
-			fmt.Printf("Error loading key pair: %v\n", err)
-		}
-	} else {
-		err = fmt.Errorf("I have no certificate")
-	}
-	return
-}
-
-func main() {
-	kill := make(chan bool)
+func server() *http.Server {
 	allowedHeaders := handlers.AllowedHeaders([]string{"application/json", "application/x-www-form-urlencoded", "Origin", "Access-Control-Allow-Origin", "X-Requested-With", "Content-Type", "Accept", "multipart/form-data", "Token", "Authorization"})
 	allowedOrigins := handlers.AllowedOrigins([]string{"*"})
 	allowedMethods := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "OPTIONS"})
-
 	router := mux.NewRouter()
+
 	log.Printf("server running pn port %s...", port)
 	router.HandleFunc("/register", register).Methods("POST")
 	router.HandleFunc("/token", getToken).Methods("GET")
 	router.Handle("/api/sensor/", isProtected(getSensorData)).Methods("GET")
 	router.Handle("/userinfo", isProtected(userinfo)).Methods("GET")
 	router.Handle("/api/logs/", isProtected(getLogs)).Methods("GET")
-	router.HandleFunc("/api/settings", changeSettings).Methods("POST")
+	router.Handle("/api/settings", isProtected(changeSettings)).Methods("POST")
+	router.Handle("/api/farmdetails", isProtected(addFarmDetails)).Methods("POST")
+	router.Handle("/api/farmdetails", isProtected(getFarmDetails)).Methods("GET")
+
+	return &http.Server{
+		Addr:    ":8080",
+		Handler: handlers.CORS(allowedHeaders, allowedOrigins, allowedMethods)(router),
+	}
+}
+
+func main() {
+	kill := make(chan bool)
 
 	go func() {
-		// cp, _ := x509.SystemCertPool()
-		// data, _ := ioutil.ReadFile("minica.pem")
-		// cp.AppendCertsFromPEM(data)
-
-		// tls := &tls.Config{
-		// 	ClientCAs:      cp,
-		// 	GetCertificate: certReqFunc("./192.168.0.18/cert.pem", "./192.168.0.18/key.pem"),
-		// }
-
-		server := &http.Server{
-			Addr: ":8080",
-			// TLSConfig: tls,
-			Handler: handlers.CORS(allowedHeaders, allowedOrigins, allowedMethods)(router),
-		}
-
-		err := server.ListenAndServe()
+		server := server()
+		err := http.ListenAndServe(server.Addr, server.Handler)
 		if err != nil {
 			log.Fatalf("cannot create a connection on port %s", port)
 		}
