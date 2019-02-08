@@ -12,9 +12,10 @@ const (
 	WaterLevel  BucketFilter = "waterlevel"
 	All         BucketFilter = ""
 
-	Sensor BucketName = "sensor"
-	User   BucketName = "user"
-	Log    BucketName = "log"
+	Sensor      BucketName = "sensor"
+	User        BucketName = "user"
+	Log         BucketName = "log"
+	FarmDetails BucketName = "farmdetails"
 
 	CoolingFan OutputDevice = "coolingFan"
 )
