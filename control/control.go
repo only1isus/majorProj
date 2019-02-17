@@ -6,7 +6,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/MichaelS11/go-dht"
 	"github.com/ghodss/yaml"
 	"github.com/only1isus/majorProj/config"
 	"github.com/only1isus/majorProj/consts"
@@ -148,8 +147,10 @@ func (t *Temperature) Maintain(value float64, fan *OutputDevice, notify chan<- [
 						return err
 					}
 					if value >= *currentTemp {
-						time.Sleep(2 * time.Minute)
+						time.Sleep(1 * time.Minute)
 						log.Println("Done")
+						fan.ChangePWM(0.4)
+						time.Sleep(1 * time.Minute)
 						if err := fan.Off(); err != nil {
 							n <- nil
 							return err
@@ -182,21 +183,10 @@ func (h *Humidity) Get() (*float64, error) {
 	// if err != nil {
 	// 	return nil, err
 	// }
-	err := dht.HostInit()
-	if err != nil {
-		return nil, err
-	}
 
-	dht, err := dht.NewDHT("GPIO13", dht.Fahrenheit, "")
-	if err != nil {
-		return nil, err
-	}
-	humidity, _, err := dht.Read()
-	if err != nil {
-		return nil, fmt.Errorf("Read error: %v", err)
-	}
-	hum := float64(humidity)
-	return &hum, err
+	// hum := float64(humidity)
+	// return &hum, err
+	return nil, nil
 }
 
 func (h *Humidity) Prepare() (*[]byte, error) {
@@ -243,7 +233,6 @@ func (o OutputDevice) On() error {
 	in2 := rpio.Pin(o.Pins.IN2)
 	// en.Pwm()
 	rpio.StartPwm()
-	// defer rpio.StopPwm()
 	en.Pwm()
 	in1.Output()
 	in2.Output()
@@ -253,6 +242,20 @@ func (o OutputDevice) On() error {
 	in1.Low()
 	in2.High()
 
+	return nil
+}
+
+func (o OutputDevice) ChangePWM(rate float64) error {
+	err := rpio.Open()
+	if err != nil {
+		return err
+	}
+	defer rpio.Close()
+
+	rpio.StartPwm()
+	en := rpio.Pin(o.Pins.EN)
+	en.Pwm()
+	en.DutyCycle(uint32(rate*128), 128)
 	return nil
 }
 
@@ -275,6 +278,7 @@ func (o OutputDevice) Off() error {
 	en.Low()
 	in1.Low()
 	in2.Low()
+	rpio.StopPwm()
 
 	return nil
 }
