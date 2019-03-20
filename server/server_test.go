@@ -33,16 +33,16 @@ var testData = []struct {
 }{
 
 	{
-		userAuth:            &auth{username: "test123@gmail.com", password: "password", response: http.StatusUnauthorized},
+		userAuth:            &auth{username: "test4@gmail.com", password: "password", response: http.StatusUnauthorized},
 		endpointInformation: endpoint{reqType: "get"},
 	},
 	{
-		userAuth:            &auth{username: "test14@gmail.com", password: "qwerty", response: http.StatusOK},
+		userAuth:            &auth{username: "test4@gmail.com", password: "qwerty", response: http.StatusOK},
 		endpointInformation: endpoint{endpoint: "api/sensor/?sensortype=temperature&timepan=1", name: "sensor", response: http.StatusBadRequest, reqType: "get"},
 		omitToken:           false,
 	},
 	{
-		userAuth:            &auth{username: "test123@gmail.com", password: "qwerty", response: http.StatusOK},
+		userAuth:            &auth{username: "test4@gmail.com", password: "qwerty", response: http.StatusOK},
 		endpointInformation: endpoint{endpoint: "api/farmdetails", name: "farmdetails", reqType: "post", response: http.StatusOK},
 		data: types.FarmDetails{
 			Configured:   true,
@@ -51,7 +51,7 @@ var testData = []struct {
 		},
 	},
 	{
-		userAuth:            &auth{username: "test123@gmail.com", password: "qwerty", response: http.StatusOK},
+		userAuth:            &auth{username: "test4@gmail.com", password: "qwerty", response: http.StatusOK},
 		endpointInformation: endpoint{endpoint: "api/farmdetails", name: "farmdetails", response: http.StatusOK, reqType: "get"},
 		omitToken:           false,
 	},
