@@ -345,7 +345,7 @@ func isProtected(endpoint func(http.ResponseWriter, *http.Request)) http.Handler
 }
 
 func hashPassword(password string) ([]byte, error) {
-	p, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	p, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
 	if err != nil {
 		return nil, err
 	}
