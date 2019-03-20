@@ -3,6 +3,7 @@ package consts
 type BucketName string
 type OutputDevice string
 type BucketFilter string
+type AnalogSensor string
 
 const (
 	Temperature BucketFilter = "temperature"
@@ -17,5 +18,9 @@ const (
 	Log         BucketName = "log"
 	FarmDetails BucketName = "farmdetails"
 
-	CoolingFan OutputDevice = "coolingFan"
+	CoolingFan      OutputDevice = "coolingFan"
+	CirculationPump OutputDevice = "circulationpump"
+	GrowLight       OutputDevice = "growlight"
+
+	WaterLevelSensor AnalogSensor = "waterlevel"
 )
