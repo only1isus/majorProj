@@ -5,10 +5,10 @@ databaseConnection:
   secret: SECRET-KEY
 
 devices:
-  - name: light
-    pin: 16
-    onTime: 
-    every: 
+  - name: growlight
+    pins: {en: 21, in1: 20, in2: 16}
+    onTime: 1
+    every: 2
     rate: 0.7
     automatic: false
 
@@ -16,7 +16,7 @@ devices:
     pins: {en: 21, in1: 20, in2: 16}
     onTime: 
     every: 
-    rate: 0.7
+    rate: 1
     automatic: true
   
   - name: circulationpump
@@ -46,3 +46,8 @@ devices:
     every: 
     rate: 0.7
     automatic: true
+
+analogSensor:
+  - name: waterlevel
+    analogPin: 0
+    every: 
