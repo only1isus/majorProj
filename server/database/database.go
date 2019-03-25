@@ -129,17 +129,21 @@ func GetSensorData(rootBucket []byte, filter consts.BucketFilter, span int64) (*
 			}
 			return nil
 		}
-
-		// otherwise find the entries within the timespan and filter by BucketFilter
-		c := sensorEntries.Cursor()
-		for k, v := c.Seek([]byte(minTimeUnix)); k != nil && bytes.Compare(k, []byte(maxTimeUnix)) <= 0; k, v = c.Next() {
+		if err := sensorEntries.ForEach(func(k, v []byte) error {
 			if err := json.Unmarshal(v, &sensorData); err != nil {
 				return err
 			}
+			RFC3339Time := time.Unix(sensorData.Time, sensorData.Time/100000000).Format(time.RFC3339)
 			if bytes.Contains(v, []byte(filter)) {
-				sensorDataEntries = append(sensorDataEntries, sensorData)
+				if RFC3339Time >= minTimeUnix && RFC3339Time <= maxTimeUnix {
+					sensorDataEntries = append(sensorDataEntries, sensorData)
+				}
 			}
+			return nil
+		}); err != nil {
+			return err
 		}
+
 		return nil
 	}); err != nil {
 		return nil, err
@@ -317,17 +321,17 @@ func GetLogs(rootBucket []byte, span int64) (*[]types.LogEntry, error) {
 			return nil
 		}
 
-		// otherwise find the entries within the timespan and filter by BucketFilter
-		c := logEntries.Cursor()
-		for k, v := c.Seek([]byte(minTimeUnix)); k != nil && bytes.Compare(k, []byte(maxTimeUnix)) <= 0; k, v = c.Next() {
+		if err := logEntries.ForEach(func(k, v []byte) error {
 			if err := json.Unmarshal(v, &log); err != nil {
 				return err
 			}
-
-			logs = append(logs, log)
-			// if bytes.Contains(v, []byte(filter)) {
-			// 	sensorDataEntries = append(sensorDataEntries, sensorData)
-			// }
+			RFC3339Time := time.Unix(log.Time, log.Time/100000000).Format(time.RFC3339)
+			if RFC3339Time >= minTimeUnix && RFC3339Time <= maxTimeUnix {
+				logs = append(logs, log)
+			}
+			return nil
+		}); err != nil {
+			return err
 		}
 		return nil
 	}); err != nil {
