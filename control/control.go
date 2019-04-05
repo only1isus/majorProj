@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"gobot.io/x/gobot/drivers/i2c"
-	"gobot.io/x/gobot/platforms/raspi"
+	"github.com/only1isus/ADS1115"
 
 	"github.com/ghodss/yaml"
 	"github.com/only1isus/majorProj/config"
@@ -39,7 +38,7 @@ type ADCSensor struct {
 	Name       consts.AnalogSensor `yaml:"name"`
 	Every      int64               `yaml:"every"`
 	AnalogPin  int                 `yaml:"analogPin"`
-	connection *i2c.ADS1x15Driver
+	connection *ADS1115.ADS1115
 }
 
 // ADCSensor is a struct of the input sensor connected to the ADS1115 module.
@@ -63,20 +62,6 @@ type Humidity Sensor
 // type PH ADCSensor
 // type EC ADCSensor
 type WaterLevel ADCSensor
-
-// type AnalogSensors interface {
-// 	Get()
-// 	Save()
-// 	Log()
-// }
-
-// I2CConnection returns a ADS1115 i2c connection
-func i2cConnection(address, bus int) (*i2c.ADS1x15Driver, error) {
-	a := raspi.NewAdaptor()
-	ads := i2c.NewADS1115Driver(a, i2c.WithBus(bus), i2c.WithAddress(address))
-	ads.DefaultGain, _ = ads.BestGainForVoltage(5.0)
-	return ads, nil
-}
 
 func NewAnalogSensor(sensorName consts.AnalogSensor) (*ADCSensor, error) {
 	inputSensors := new(ADCSensors)
