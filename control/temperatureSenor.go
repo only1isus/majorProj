@@ -34,12 +34,13 @@ func (t *TemperatureSensor) Get() (*float64, error) {
 		}
 		break
 	}
-	return &t.value, err
+	return &t.value, nil
 }
 
 // Maintain method tries to keep the temperature at the value passed to the method.
-func (t *TemperatureSensor) Maintain(value float64, fan *OutputDevice, notify chan<- []byte) error {
-	go func(n chan<- []byte) error {
+func (t *TemperatureSensor) Maintain(value float64, f *OutputDevice, notify chan<- []byte) error {
+	go func(n chan<- []byte, fan *OutputDevice) error {
+
 		for {
 			temp, err := t.Get()
 			if err != nil {
@@ -87,7 +88,7 @@ func (t *TemperatureSensor) Maintain(value float64, fan *OutputDevice, notify ch
 			}
 			time.Sleep(30 * time.Second)
 		}
-	}(notify)
+	}(notify, f)
 	return nil
 }
 
