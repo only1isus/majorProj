@@ -8,8 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/only1isus/majorProj/types"
+	"time"
 )
 
 type auth struct {
@@ -32,29 +31,33 @@ var testData = []struct {
 	data                interface{}
 }{
 
+	// {
+	// 	userAuth:            &auth{username: "test4@gmail.com", password: "password", response: http.StatusUnauthorized},
+	// 	endpointInformation: endpoint{reqType: "get"},
+	// },
 	{
-		userAuth:            &auth{username: "test4@gmail.com", password: "password", response: http.StatusUnauthorized},
-		endpointInformation: endpoint{reqType: "get"},
+		userAuth:            &auth{username: "test1@gmail.com", password: "qwerty", response: http.StatusOK},
+		endpointInformation: endpoint{endpoint: fmt.Sprintf("api/sensor/?sensortype=temperature&starttime=%d&endtime=%d", 1553299200, time.Now().Unix()), name: "sensor", response: http.StatusOK, reqType: "get"},
 	},
-	{
-		userAuth:            &auth{username: "test4@gmail.com", password: "qwerty", response: http.StatusOK},
-		endpointInformation: endpoint{endpoint: "api/sensor/?sensortype=temperature&timepan=1", name: "sensor", response: http.StatusBadRequest, reqType: "get"},
-		omitToken:           false,
-	},
-	{
-		userAuth:            &auth{username: "test4@gmail.com", password: "qwerty", response: http.StatusOK},
-		endpointInformation: endpoint{endpoint: "api/farmdetails", name: "farmdetails", reqType: "post", response: http.StatusOK},
-		data: types.FarmDetails{
-			Configured:   true,
-			CropType:     "lettuce",
-			MaturityTime: 37,
-		},
-	},
-	{
-		userAuth:            &auth{username: "test4@gmail.com", password: "qwerty", response: http.StatusOK},
-		endpointInformation: endpoint{endpoint: "api/farmdetails", name: "farmdetails", response: http.StatusOK, reqType: "get"},
-		omitToken:           false,
-	},
+	// {
+	// 	userAuth:            &auth{username: "test4@gmail.com", password: "qwerty", response: http.StatusOK},
+	// 	endpointInformation: endpoint{endpoint: "api/sensor/?sensortype=temperature&timepan=1", name: "sensor", response: http.StatusBadRequest, reqType: "get"},
+	// 	omitToken:           false,
+	// },
+	// {
+	// 	userAuth:            &auth{username: "test4@gmail.com", password: "qwerty", response: http.StatusOK},
+	// 	endpointInformation: endpoint{endpoint: "api/farmdetails", name: "farmdetails", reqType: "post", response: http.StatusOK},
+	// 	data: types.FarmDetails{
+	// 		Configured:   true,
+	// 		CropType:     "lettuce",
+	// 		MaturityTime: 37,
+	// 	},
+	// },
+	// {
+	// 	userAuth:            &auth{username: "test4@gmail.com", password: "qwerty", response: http.StatusOK},
+	// 	endpointInformation: endpoint{endpoint: "api/farmdetails", name: "farmdetails", response: http.StatusOK, reqType: "get"},
+	// 	omitToken:           false,
+	// },
 }
 
 func authenticate(username, password string) (string, int, error) {
@@ -140,7 +143,6 @@ func TestProtectedEndpoints(t *testing.T) {
 					resp := w.Result()
 					if resp.StatusCode != td.endpointInformation.response {
 						t.Errorf("got status code %v instead of %v while requesting %v", resp.StatusCode, td.endpointInformation.response, td.endpointInformation.name)
-
 						b, err := ioutil.ReadAll(resp.Body)
 						if err != nil {
 							t.Log(err.Error())
@@ -177,7 +179,7 @@ func TestProtectedEndpoints(t *testing.T) {
 func TestRegister(t *testing.T) {
 	data := map[string]string{
 		"name":     "jon doe",
-		"email":    "test14@gmail.com",
+		"email":    "test1@gmail.com",
 		"phone":    "8785980103",
 		"password": "qwerty",
 	}

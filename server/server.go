@@ -127,41 +127,60 @@ func getClaims(w http.ResponseWriter, r *http.Request) jwt.MapClaims {
 // returns the sensor data by type
 func getSensorData(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
-	span := query.Get("timespan")
+	s := query.Get("starttime")
+	e := query.Get("endtime")
 	sensorType := query.Get("sensortype")
-	s, err := strconv.Atoi(span)
-	if err != nil || span == "" || sensorType == "" {
-		respondWithError(w, http.StatusBadRequest, fmt.Errorf("check the parameters being passed"))
+	if s == "" || e == "" || sensorType == "" {
+		respondWithError(w, http.StatusBadRequest, fmt.Errorf("empty parameters being passed"))
+		return
 	}
-
+	start, err := strconv.Atoi(s)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Errorf("check the value of parameters being passed"))
+		return
+	}
+	end, err := strconv.Atoi(e)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Errorf("check the value of parameters being passed"))
+		return
+	}
 	claims := getClaims(w, r)
+	//
 	key := claims["key"].(string)
 	switch strings.ToLower(sensorType) {
 
-	case "humidity":
-		data, err := db.GetSensorData([]byte(key), consts.Humidity, int64(s))
-		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, err)
-			return
-		}
-		sendResponse(w, data)
-		return
+	// case "humidity":
+	// 	data, err := db.GetSensorData([]byte(key), consts.Humidity, int64(s))
+	// 	if err != nil {
+	// 		respondWithError(w, http.StatusInternalServerError, err)
+	// 		return
+	// 	}
+	// 	sendResponse(w, data)
+	// 	return
 	case "temperature":
-		data, err := db.GetSensorData([]byte(key), consts.Temperature, int64(s))
+		data, err := db.GetSensorData([]byte(key), consts.Temperature, int64(start), int64(end))
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, err)
 			return
 		}
 		sendResponse(w, data)
 		return
-	case "all":
-		data, err := db.GetSensorData([]byte(key), consts.All, int64(s))
+	case "waterlevel":
+		data, err := db.GetSensorData([]byte(key), consts.WaterLevel, int64(start), int64(end))
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, err)
 			return
 		}
 		sendResponse(w, data)
 		return
+	// case "all":
+	// 	data, err := db.GetSensorData([]byte(key), consts.All, int64(s))
+	// 	if err != nil {
+	// 		respondWithError(w, http.StatusInternalServerError, err)
+	// 		return
+	// 	}
+	// 	sendResponse(w, data)
+	// 	return
 	default:
 		respondWithError(w, http.StatusNotFound, fmt.Errorf("page not found"))
 		return
@@ -171,16 +190,26 @@ func getSensorData(w http.ResponseWriter, r *http.Request) {
 // get all the logs
 func getLogs(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
-	span := query.Get("timespan")
-	s, err := strconv.Atoi(span)
+	s := query.Get("starttime")
+	e := query.Get("endtime")
+	if s == "" || e == "" {
+		respondWithError(w, http.StatusBadRequest, fmt.Errorf("empty parameters being passed"))
+		return
+	}
+	start, err := strconv.Atoi(s)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, fmt.Errorf("make sure the timespan is an integer"))
+		respondWithError(w, http.StatusBadRequest, fmt.Errorf("check the value of parameters being passed"))
+		return
+	}
+	end, err := strconv.Atoi(e)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Errorf("check the value of parameters being passed"))
 		return
 	}
 
 	claims := getClaims(w, r)
 	key := claims["key"].(string)
-	logs, err := db.GetLogs([]byte(key), int64(s))
+	logs, err := db.GetLogs([]byte(key), int64(start), int64(end))
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, fmt.Errorf("Something went wrong getting the data requested"))
 		return
@@ -367,7 +396,7 @@ func (s *svr) CommitSensorData(ctx context.Context, data *controller.SensorData)
 	if err != nil {
 		return &controller.SuccessResponse{Success: false}, err
 	}
-	err = db.AddSensorEntry(data.Key, []byte(time.Now().Format(time.RFC3339)), d)
+	err = db.AddSensorEntry(data.Key, []byte(ksuid.New().String()), d)
 	if err != nil {
 		return &controller.SuccessResponse{Success: false}, err
 	}
@@ -379,7 +408,7 @@ func (s *svr) CommitLog(ctx context.Context, data *controller.LogData) (*control
 	if err := json.Unmarshal(data.Data, &l); err != nil {
 		return &controller.SuccessResponse{Success: false}, err
 	}
-	err := db.AddLogEntry(data.Key, []byte(time.Now().Format(time.RFC3339)), l)
+	err := db.AddLogEntry(data.Key, []byte(ksuid.New().String()), l)
 	if err != nil {
 		return &controller.SuccessResponse{Success: false}, err
 	}
@@ -395,6 +424,7 @@ func server() *http.Server {
 	log.Printf("server running pn port %s...", port)
 	router.HandleFunc("/register", register).Methods("POST")
 	router.HandleFunc("/token", getToken).Methods("GET")
+	// router.Handle("/api/sensor/", isProtected(getSensorData)).Methods("GET")
 	router.Handle("/api/sensor/", isProtected(getSensorData)).Methods("GET")
 	router.Handle("/userinfo", isProtected(userinfo)).Methods("GET")
 	router.Handle("/api/logs/", isProtected(getLogs)).Methods("GET")

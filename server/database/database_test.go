@@ -2,8 +2,11 @@ package db
 
 import (
 	"encoding/json"
+	"log"
 	"testing"
 	"time"
+
+	"github.com/segmentio/ksuid"
 
 	"github.com/only1isus/majorProj/consts"
 	"github.com/only1isus/majorProj/types"
@@ -62,25 +65,28 @@ var sensorTT = []struct {
 	{name: consts.All},
 }
 
-func TestGetFromDatabase(t *testing.T) {
-	for _, test := range info {
-		t.Run(test.Name, func(t *testing.T) {
-			user, err := GetUserData(test.Email)
-			if err != nil {
-				t.Fail()
-			}
-			if user.Email != test.Email {
-				t.Errorf("user %v not found", test.Email)
-			}
-			t.Log(*user)
-		})
-	}
-}
+// func TestGetFromDatabase(t *testing.T) {
+// 	for _, test := range info {
+// 		t.Run(test.Name, func(t *testing.T) {
+// 			user, err := GetUserData(test.Email)
+// 			if err != nil {
+// 				t.Fail()
+// 			}
+// 			if user.Email != test.Email {
+// 				t.Errorf("user %v not found", test.Email)
+// 			}
+// 			t.Log(*user)
+// 		})
+// 	}
+// }
 func TestWriteSenorData(t *testing.T) {
 	for _, test := range sensorData {
-		time.Sleep(2 * time.Second) // just to makes sure the data isn't overwritten
+		// time.Sleep(2 * time.Second) // just to makes sure the data isn't overwritten
 		t.Run(string(test.SensorType), func(t *testing.T) {
-			err := AddSensorEntry([]byte("1GYJU7OD2KFJRBUWDPP5I8P5VCL"), []byte(time.Now().Format(time.RFC3339)), test)
+
+			// RFC3339Time := time.Unix(test.Time, test.Time/100000000).Format(time.RFC3339)
+			// fmt.Println(RFC3339Time)
+			err := AddSensorEntry([]byte("1J8TD4AC65SUIBWI9YZOF77IQQ7"), []byte(ksuid.New().String()), test)
 			if err != nil {
 				t.Fatalf(err.Error())
 			}
@@ -92,14 +98,14 @@ func TestGetSenorData(t *testing.T) {
 	for _, test := range sensorTT {
 		// time.Sleep(time.Second * 2)
 		t.Run(string(test.name), func(t *testing.T) {
-			data, err := GetSensorData([]byte("1GYJU7OD2KFJRBUWDPP5I8P5VCL"), test.name, 0)
+			data, err := GetSensorData([]byte("1GYJU7OD2KFJRBUWDPP5I8P5VCL"), test.name, 1553562000, 1553558400)
 			if err != nil {
 				t.Fatalf("got an error trying to get data %v", err.Error())
 			}
 			// if (*data)[0].SensorType != test.name {
 			// 	t.Errorf("expeced %v got %v instead", test.name, (*data)[0].SensorType)
 			// }
-			t.Log(len(*data))
+			log.Printf("lenght of the response is %v", len(*data))
 		})
 	}
 }
@@ -111,22 +117,22 @@ func TestWriteLog(t *testing.T) {
 		Time:    time.Now().Unix(),
 	}
 
-	err := AddLogEntry([]byte("1GYJU7OD2KFJRBUWDPP5I8P5VCL"), []byte(time.Now().Format(time.RFC3339)), l)
+	err := AddLogEntry([]byte("1J8TD4AC65SUIBWI9YZOF77IQQ7"), []byte(ksuid.New().String()), l)
 	if err != nil {
 		t.Fail()
 	}
 }
 
-func TestGetLogs(t *testing.T) {
-	logs, err := GetLogs([]byte("1GYJU7OD2KFJRBUWDPP5I8P5VCL"), 0)
-	if err != nil {
-		t.Fail()
-	}
-	if len(*logs) == 0 {
-		t.Errorf("cannot get the logs")
-	}
-	t.Log(len(*logs))
-}
+// func TestGetLogs(t *testing.T) {
+// 	logs, err := GetLogs([]byte("1GYJU7OD2KFJRBUWDPP5I8P5VCL"), 1)
+// 	if err != nil {
+// 		t.Fail()
+// 	}
+// 	if len(*logs) == 0 {
+// 		t.Errorf("cannot get the logs")
+// 	}
+// 	t.Log(len(*logs))
+// }
 
 func TestFarmDetails(t *testing.T) {
 	fd := &types.FarmDetails{

@@ -50,13 +50,14 @@ func initialize() *bolt.DB {
 	return db
 }
 
-func maxMinTime(span int64) (maxTimeUnix string, minTimeUnix string) {
-	timeNow := time.Now().Unix()
-	maxTime := timeNow + (span * 3600)
-	minTime := timeNow - (span * 3600)
+func maxMinTime(start, end int64) (maxTimeUnix string, minTimeUnix string) {
+	// timeNow := time.Now().Unix()
+	// maxTime := timeNow + (span * 3600)
+	// minTime := timeNow - (span * 3600)
 	// change the times from string to the time.Time struct.
-	maxTimeUnix = time.Unix(maxTime, maxTime/100000000).Format(time.RFC3339)
-	minTimeUnix = time.Unix(minTime, minTime/100000000).Format(time.RFC3339)
+	maxTimeUnix = time.Unix(end, end/100000000).Format(time.RFC3339)
+	minTimeUnix = time.Unix(start, start/100000000).Format(time.RFC3339)
+	fmt.Println(maxTimeUnix)
 	return maxTimeUnix, minTimeUnix
 }
 
@@ -95,11 +96,11 @@ func AddSensorEntry(rootBucket []byte, key []byte, value types.SensorEntry) erro
 // GetSensorData returns a list of the sensor data
 // bucketName is the name of the bucket the data should be added to. To choose which type
 // of sensor data is returned set a filter.
-func GetSensorData(rootBucket []byte, filter consts.BucketFilter, span int64) (*[]types.SensorEntry, error) {
+func GetSensorData(rootBucket []byte, filter consts.BucketFilter, start int64, end int64) (*[]types.SensorEntry, error) {
 	db := initialize()
 	defer db.Close()
 
-	maxTimeUnix, minTimeUnix := maxMinTime(span)
+	maxTimeUnix, minTimeUnix := maxMinTime(start, end)
 	sensorDataEntries := []types.SensorEntry{}
 
 	if err := db.View(func(tx *bolt.Tx) error {
@@ -114,26 +115,27 @@ func GetSensorData(rootBucket []byte, filter consts.BucketFilter, span int64) (*
 		}
 
 		sensorData := types.SensorEntry{}
-		if span == 0 {
-			err := sensorEntries.ForEach(func(k, v []byte) error {
-				if err := json.Unmarshal(v, &sensorData); err != nil {
-					return err
-				}
-				if bytes.Contains(v, []byte(filter)) {
-					sensorDataEntries = append(sensorDataEntries, sensorData)
-				}
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-			return nil
-		}
+		// if span == 0 {
+		// 	err := sensorEntries.ForEach(func(k, v []byte) error {
+		// 		if err := json.Unmarshal(v, &sensorData); err != nil {
+		// 			return err
+		// 		}
+		// 		if bytes.Contains(v, []byte(filter)) {
+		// 			sensorDataEntries = append(sensorDataEntries, sensorData)
+		// 		}
+		// 		return nil
+		// 	})
+		// 	if err != nil {
+		// 		return err
+		// 	}
+		// 	return nil
+		// }
 		if err := sensorEntries.ForEach(func(k, v []byte) error {
 			if err := json.Unmarshal(v, &sensorData); err != nil {
 				return err
 			}
 			RFC3339Time := time.Unix(sensorData.Time, sensorData.Time/100000000).Format(time.RFC3339)
+			fmt.Printf("min time: %v, max time: %v sensor time: %v\n", minTimeUnix, maxTimeUnix, RFC3339Time)
 			if bytes.Contains(v, []byte(filter)) {
 				if RFC3339Time >= minTimeUnix && RFC3339Time <= maxTimeUnix {
 					sensorDataEntries = append(sensorDataEntries, sensorData)
@@ -286,11 +288,11 @@ func AddLogEntry(rootBucket []byte, key []byte, value types.LogEntry) error {
 }
 
 // GetLogs returns all the logs within the time specified with the span (number of hours) parameter.
-func GetLogs(rootBucket []byte, span int64) (*[]types.LogEntry, error) {
+func GetLogs(rootBucket []byte, start int64, end int64) (*[]types.LogEntry, error) {
 	db := initialize()
 	defer db.Close()
 
-	maxTimeUnix, minTimeUnix := maxMinTime(span)
+	maxTimeUnix, minTimeUnix := maxMinTime(start, end)
 	logs := []types.LogEntry{}
 	if err := db.View(func(tx *bolt.Tx) error {
 		root := tx.Bucket(bytes.ToUpper(rootBucket))
@@ -303,23 +305,23 @@ func GetLogs(rootBucket []byte, span int64) (*[]types.LogEntry, error) {
 		}
 		log := types.LogEntry{}
 
-		if span == 0 {
-			err := logEntries.ForEach(func(k, v []byte) error {
-				if err := json.Unmarshal(v, &log); err != nil {
-					return err
-				}
-				logs = append(logs, log)
-				// if bytes.Contains(v, []byte(filter)) {
+		// if span == 0 {
+		// 	err := logEntries.ForEach(func(k, v []byte) error {
+		// 		if err := json.Unmarshal(v, &log); err != nil {
+		// 			return err
+		// 		}
+		// 		logs = append(logs, log)
+		// 		// if bytes.Contains(v, []byte(filter)) {
 
-				// 	logs = append(logs, log)
-				// }
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-			return nil
-		}
+		// 		// 	logs = append(logs, log)
+		// 		// }
+		// 		return nil
+		// 	})
+		// 	if err != nil {
+		// 		return err
+		// 	}
+		// 	return nil
+		// }
 
 		if err := logEntries.ForEach(func(k, v []byte) error {
 			if err := json.Unmarshal(v, &log); err != nil {
