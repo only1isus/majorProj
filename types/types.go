@@ -29,13 +29,6 @@ type Connection struct {
 	RequireAuthentication bool   `yaml:"requireAuthentication"`
 }
 
-// type DatabaseConnection struct {
-// 	Port                  string `yaml:"port"`
-// 	Host                  string `yaml:"host"`
-// 	Secret                string `yaml:"secret"`
-// 	RequireAuthentication bool   `yaml:"requireAuthentication"`
-// }
-
 // User ...
 type User struct {
 	CreatedAt int64  `json:"createdAt,omitempty"`
@@ -49,6 +42,9 @@ type User struct {
 
 type FarmDetails struct {
 	CropType     string `json:"cropType"`
+	PlantedOn    int64  `json:"plantedOn"`
+	HarvestOn    int64  `json:"harvestOn"`
+	NKP          string `json:"npk"`
 	MaturityTime int64  `json:"maturityTime"`
 	Configured   bool   `json:"configured"`
 }
