@@ -51,10 +51,6 @@ func initialize() *bolt.DB {
 }
 
 func maxMinTime(start, end int64) (maxTimeUnix string, minTimeUnix string) {
-	// timeNow := time.Now().Unix()
-	// maxTime := timeNow + (span * 3600)
-	// minTime := timeNow - (span * 3600)
-	// change the times from string to the time.Time struct.
 	maxTimeUnix = time.Unix(end, end/100000000).Format(time.RFC3339)
 	minTimeUnix = time.Unix(start, start/100000000).Format(time.RFC3339)
 	fmt.Println(maxTimeUnix)
