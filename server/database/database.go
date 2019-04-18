@@ -115,27 +115,11 @@ func GetSensorData(rootBucket []byte, filter consts.BucketFilter, start int64, e
 		}
 
 		sensorData := types.SensorEntry{}
-		// if span == 0 {
-		// 	err := sensorEntries.ForEach(func(k, v []byte) error {
-		// 		if err := json.Unmarshal(v, &sensorData); err != nil {
-		// 			return err
-		// 		}
-		// 		if bytes.Contains(v, []byte(filter)) {
-		// 			sensorDataEntries = append(sensorDataEntries, sensorData)
-		// 		}
-		// 		return nil
-		// 	})
-		// 	if err != nil {
-		// 		return err
-		// 	}
-		// 	return nil
-		// }
 		if err := sensorEntries.ForEach(func(k, v []byte) error {
 			if err := json.Unmarshal(v, &sensorData); err != nil {
 				return err
 			}
 			RFC3339Time := time.Unix(sensorData.Time, sensorData.Time/100000000).Format(time.RFC3339)
-			fmt.Printf("min time: %v, max time: %v sensor time: %v\n", minTimeUnix, maxTimeUnix, RFC3339Time)
 			if bytes.Contains(v, []byte(filter)) {
 				if RFC3339Time >= minTimeUnix && RFC3339Time <= maxTimeUnix {
 					sensorDataEntries = append(sensorDataEntries, sensorData)
@@ -156,7 +140,7 @@ func GetSensorData(rootBucket []byte, filter consts.BucketFilter, start int64, e
 func AddUserEntry(user types.User) error {
 	db := initialize()
 	defer db.Close()
-
+	user.CreatedAt = time.Now().Unix()
 	out, err := json.Marshal(user)
 	if err != nil {
 		return err
@@ -304,24 +288,6 @@ func GetLogs(rootBucket []byte, start int64, end int64) (*[]types.LogEntry, erro
 			return fmt.Errorf("there is no entry in the root bucket")
 		}
 		log := types.LogEntry{}
-
-		// if span == 0 {
-		// 	err := logEntries.ForEach(func(k, v []byte) error {
-		// 		if err := json.Unmarshal(v, &log); err != nil {
-		// 			return err
-		// 		}
-		// 		logs = append(logs, log)
-		// 		// if bytes.Contains(v, []byte(filter)) {
-
-		// 		// 	logs = append(logs, log)
-		// 		// }
-		// 		return nil
-		// 	})
-		// 	if err != nil {
-		// 		return err
-		// 	}
-		// 	return nil
-		// }
 
 		if err := logEntries.ForEach(func(k, v []byte) error {
 			if err := json.Unmarshal(v, &log); err != nil {
