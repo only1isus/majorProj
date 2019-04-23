@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/only1isus/majorProj/types"
 )
 
 type auth struct {
@@ -30,34 +32,66 @@ var testData = []struct {
 	omitToken           bool
 	data                interface{}
 }{
-
-	// {
-	// 	userAuth:            &auth{username: "test4@gmail.com", password: "password", response: http.StatusUnauthorized},
-	// 	endpointInformation: endpoint{reqType: "get"},
-	// },
 	{
-		userAuth:            &auth{username: "test1@gmail.com", password: "qwerty", response: http.StatusOK},
-		endpointInformation: endpoint{endpoint: fmt.Sprintf("api/sensor/?sensortype=temperature&starttime=%d&endtime=%d", 1553299200, time.Now().Unix()), name: "sensor", response: http.StatusOK, reqType: "get"},
+		userAuth:            &auth{username: "isuspisus1@gmail.com", password: "qwerty", response: http.StatusOK},
+		endpointInformation: endpoint{endpoint: "api/farmdetails", name: "farmdetails", reqType: "post", response: http.StatusOK},
+		data: types.FarmDetails{
+			PlantedOn:    convertDate("2019-03-04T00:00:00+00:00"),
+			HarvestOn:    convertDate("2019-04-03T00:00:00+00:00"),
+			NPK:          "generic",
+			CropType:     "spinach",
+			MaturityTime: 30,
+		},
 	},
-	// {
-	// 	userAuth:            &auth{username: "test4@gmail.com", password: "qwerty", response: http.StatusOK},
-	// 	endpointInformation: endpoint{endpoint: "api/sensor/?sensortype=temperature&timepan=1", name: "sensor", response: http.StatusBadRequest, reqType: "get"},
-	// 	omitToken:           false,
-	// },
-	// {
-	// 	userAuth:            &auth{username: "test4@gmail.com", password: "qwerty", response: http.StatusOK},
-	// 	endpointInformation: endpoint{endpoint: "api/farmdetails", name: "farmdetails", reqType: "post", response: http.StatusOK},
-	// 	data: types.FarmDetails{
-	// 		Configured:   true,
-	// 		CropType:     "lettuce",
-	// 		MaturityTime: 37,
-	// 	},
-	// },
-	// {
-	// 	userAuth:            &auth{username: "test4@gmail.com", password: "qwerty", response: http.StatusOK},
-	// 	endpointInformation: endpoint{endpoint: "api/farmdetails", name: "farmdetails", response: http.StatusOK, reqType: "get"},
-	// 	omitToken:           false,
-	// },
+	{
+		userAuth: &auth{username: "isuspisus1@gmail.com", password: "qwerty", response: http.StatusOK},
+		endpointInformation: endpoint{
+			endpoint: "api/generatesummary",
+			reqType:  "get",
+			name:     "generatesummary",
+			response: http.StatusOK,
+		},
+	},
+	{
+		userAuth: &auth{username: "isuspisus1@gmail.com", password: "qwerty", response: http.StatusOK},
+		endpointInformation: endpoint{
+			endpoint: "api/getsummaries",
+			reqType:  "get",
+			name:     "getsummary",
+			response: http.StatusOK,
+		},
+	},
+	{
+		userAuth: &auth{username: "isuspisus1@gmail.com", password: "qwerty", response: http.StatusOK},
+		endpointInformation: endpoint{
+			endpoint: fmt.Sprintf("api/sensor/?sensortype=temperature&starttime=%d&endtime=%d", convertDate("2019-03-13T00:00:00+00:00"), convertDate("2019-03-14T00:00:00+00:00")),
+			name:     "sensor",
+			response: http.StatusOK,
+			reqType:  "get",
+		},
+	},
+	{
+		userAuth: &auth{username: "isuspisus1@gmail.com", password: "qwerty", response: http.StatusOK},
+		endpointInformation: endpoint{
+			endpoint: fmt.Sprintf("api/logs/?starttime=%d&endtime=%d", convertDate("2019-03-13T00:00:00+00:00"), convertDate("2019-03-14T00:00:00+00:00")),
+			name:     "log",
+			response: http.StatusOK,
+			reqType:  "get",
+		},
+		omitToken: false,
+	},
+	{
+		userAuth:            &auth{username: "isuspisus1@gmail.com", password: "qwerty", response: http.StatusOK},
+		endpointInformation: endpoint{endpoint: "api/farmdetails", name: "farmdetails", response: http.StatusOK, reqType: "get"},
+		omitToken:           false,
+	},
+}
+
+func convertDate(date string) int64 {
+	// igmore error as the time will be provided as a int64 value
+	// testing purpose
+	t, _ := time.Parse(time.RFC3339, date)
+	return t.Unix()
 }
 
 func authenticate(username, password string) (string, int, error) {
@@ -136,6 +170,12 @@ func TestProtectedEndpoints(t *testing.T) {
 							}
 							if td.endpointInformation.name == "farmdetails" {
 								getFarmDetails(w, r)
+							}
+							if td.endpointInformation.name == "generatesummary" {
+								generateSummary(w, r)
+							}
+							if td.endpointInformation.name == "getsummary" {
+								getsummaries(w, r)
 							}
 						}).(http.HandlerFunc),
 					)
