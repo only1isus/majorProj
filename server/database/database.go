@@ -53,7 +53,6 @@ func initialize() *bolt.DB {
 func maxMinTime(start, end int64) (maxTimeUnix string, minTimeUnix string) {
 	maxTimeUnix = time.Unix(end, end/100000000).Format(time.RFC3339)
 	minTimeUnix = time.Unix(start, start/100000000).Format(time.RFC3339)
-	fmt.Println(maxTimeUnix)
 	return maxTimeUnix, minTimeUnix
 }
 
@@ -212,14 +211,18 @@ func GetFarmDetails(rootBucket []byte) (*types.FarmDetails, error) {
 	return &fd, nil
 }
 
-func AddFarmEntry(rootBucket, key, value []byte) error {
+func AddFarmEntry(rootBucket, key []byte, data types.FarmDetails) error {
+	out, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
 	db := initialize()
 	defer db.Close()
 	if key == nil {
 		return fmt.Errorf("The key cannot be empty")
 	}
 
-	err := db.Update(func(tx *bolt.Tx) error {
+	if err = db.Update(func(tx *bolt.Tx) error {
 		bucket, err := tx.CreateBucketIfNotExists(bytes.ToUpper(rootBucket))
 		if err != nil {
 			return fmt.Errorf("Bucket already exists")
@@ -228,12 +231,11 @@ func AddFarmEntry(rootBucket, key, value []byte) error {
 		if err != nil {
 			return fmt.Errorf("Bucket already exists")
 		}
-		if err := b.Put(bytes.ToUpper(key), value); err != nil {
+		if err := b.Put(bytes.ToUpper(key), out); err != nil {
 			return fmt.Errorf("The key used is too long")
 		}
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		return err
 	}
 	return nil
@@ -321,4 +323,51 @@ func CreateBucket(bucketName string) error {
 		return err
 	}
 	return nil
+}
+
+func AddSummary(data types.Summary) error {
+	out, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	db := initialize()
+	defer db.Close()
+
+	if err := db.Update(func(tx *bolt.Tx) error {
+		root, err := tx.CreateBucketIfNotExists([]byte(consts.Summary))
+		if err != nil {
+			return err
+		}
+		if err := root.Put([]byte(data.ID), out); err != nil {
+			return fmt.Errorf("the key being used is too long")
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func GetSummaries() (*[]types.Summary, error) {
+	db := initialize()
+	defer db.Close()
+
+	summary := new(types.Summary)
+	summaries := new([]types.Summary)
+	if err := db.View(func(tx *bolt.Tx) error {
+		root := tx.Bucket([]byte(consts.Summary))
+		if err := root.ForEach(func(k, v []byte) error {
+			if err := json.Unmarshal(v, summary); err != nil {
+				return nil
+			}
+			*summaries = append(*summaries, *summary)
+			return nil
+		}); err != nil {
+			return nil
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return summaries, nil
 }

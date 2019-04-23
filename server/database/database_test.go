@@ -1,7 +1,6 @@
 package db
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -140,20 +139,26 @@ func TestFarmDetails(t *testing.T) {
 	fd := &types.FarmDetails{
 		PlantedOn:    convertDate("2019-03-03T00:00:00+00:00"),
 		HarvestOn:    convertDate("2019-04-03T00:00:00+00:00"),
-		NKP:          "generic",
+		NPK:          "generic",
 		CropType:     "spinach",
 		MaturityTime: 30,
 	}
-	out, err := json.Marshal(fd)
-	if err != nil {
-		t.Fatalf("cannot format the data")
-	}
-	if err := AddFarmEntry([]byte(bucket), []byte(bucket), out); err != nil {
+	if err := AddFarmEntry([]byte(bucket), []byte(bucket), *fd); err != nil {
 		t.Fatalf("got an error adding farm details to the database, %v", err)
 	}
 }
 
 func TestGetFarmDetails(t *testing.T) {
+	fd, err := GetFarmDetails([]byte(bucket))
+	if err != nil {
+		t.Fatalf("got an error adding farm details to the database, %v", err)
+	}
+	if (*fd).CropType != "spinach" {
+		t.Fatal("failed, the information is not the same.", fd)
+	}
+}
+
+func TestWriteSummary(t *testing.T) {
 	fd, err := GetFarmDetails([]byte(bucket))
 	if err != nil {
 		t.Fatalf("got an error adding farm details to the database, %v", err)
