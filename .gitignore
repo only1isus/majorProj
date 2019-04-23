@@ -3,6 +3,6 @@ config.yaml
 Makefile
 farmcontrol
 majorProj
-./server
+server
 *.db
 *.env
