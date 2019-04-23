@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -50,13 +50,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var u types.User
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, fmt.Errorf("something went wrong parsing the json data"))
-		return
-	}
-
-	if err := json.Unmarshal(body, &u); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
 		respondWithError(w, http.StatusInternalServerError, fmt.Errorf("something went wrong parsing the json data"))
 		return
 	}
@@ -88,7 +82,6 @@ func register(w http.ResponseWriter, r *http.Request) {
 func sendResponse(w http.ResponseWriter, data interface{}) {
 	d, err := json.Marshal(data)
 	if err != nil {
-		fmt.Printf("got an error while trying encode response")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 
 	} else {
@@ -148,15 +141,14 @@ func getSensorData(w http.ResponseWriter, r *http.Request) {
 	//
 	key := claims["key"].(string)
 	switch strings.ToLower(sensorType) {
-
-	// case "humidity":
-	// 	data, err := db.GetSensorData([]byte(key), consts.Humidity, int64(s))
-	// 	if err != nil {
-	// 		respondWithError(w, http.StatusInternalServerError, err)
-	// 		return
-	// 	}
-	// 	sendResponse(w, data)
-	// 	return
+	case "humidity":
+		data, err := db.GetSensorData([]byte(key), consts.Humidity, int64(start), int64(end))
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, err)
+			return
+		}
+		sendResponse(w, data)
+		return
 	case "temperature":
 		data, err := db.GetSensorData([]byte(key), consts.Temperature, int64(start), int64(end))
 		if err != nil {
@@ -173,14 +165,14 @@ func getSensorData(w http.ResponseWriter, r *http.Request) {
 		}
 		sendResponse(w, data)
 		return
-	// case "all":
-	// 	data, err := db.GetSensorData([]byte(key), consts.All, int64(s))
-	// 	if err != nil {
-	// 		respondWithError(w, http.StatusInternalServerError, err)
-	// 		return
-	// 	}
-	// 	sendResponse(w, data)
-	// 	return
+	case "all":
+		data, err := db.GetSensorData([]byte(key), consts.All, int64(start), int64(end))
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, err)
+			return
+		}
+		sendResponse(w, data)
+		return
 	default:
 		respondWithError(w, http.StatusNotFound, fmt.Errorf("page not found"))
 		return
@@ -249,25 +241,24 @@ func addFarmDetails(w http.ResponseWriter, r *http.Request) {
 	claims := getClaims(w, r)
 	key := claims["key"].(string)
 	fd := types.FarmDetails{}
-	(&fd).Configured = true
 
-	out, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, fmt.Errorf("something went wrong decoding the data"))
+	var farmDetails map[string]interface{}
+
+	if err := json.NewDecoder(r.Body).Decode(&farmDetails); err != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Errorf("something went wrong decoding the data %v", err))
 		return
 	}
 
-	if err := json.Unmarshal(out, &fd); err != nil {
-		respondWithError(w, http.StatusBadRequest, fmt.Errorf("something went wrong decoding the data"))
-		return
-	}
-	processesData, err := json.Marshal(fd)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, fmt.Errorf("something went wrong decoding the data"))
-		return
-	}
+	harvDate, _ := farmDetails["harvestOn"].(float64)
+	plantDate, _ := farmDetails["plantedOn"].(float64)
 
-	if err := db.AddFarmEntry([]byte(key), []byte(key), processesData); err != nil {
+	fd.Configured = true
+	fd.CropType = farmDetails["cropType"].(string)
+	fd.HarvestOn = int64(harvDate)
+	fd.PlantedOn = int64(plantDate)
+	fd.NPK = farmDetails["npk"].(string)
+
+	if err := db.AddFarmEntry([]byte(key), []byte(key), fd); err != nil {
 		respondWithError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -283,6 +274,74 @@ func getFarmDetails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendResponse(w, *fd)
+	return
+}
+
+func generateSummary(w http.ResponseWriter, r *http.Request) {
+	s := new(types.Summary)
+	claims := getClaims(w, r)
+	key := claims["key"].(string)
+
+	fd, err := db.GetFarmDetails([]byte(key))
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	sensorData, err := db.GetSensorData([]byte(key), consts.All, fd.PlantedOn, fd.HarvestOn)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	s.ID = fmt.Sprintf("%d-%d", fd.PlantedOn, fd.HarvestOn)
+	s.FarmDetails = *fd
+	planted := time.Unix(fd.PlantedOn, fd.PlantedOn*1000)
+	harvested := time.Unix(fd.HarvestOn, fd.HarvestOn*1000)
+
+	var weekStart time.Time
+	var weekEnd time.Time
+	totalDays := int(math.Floor(harvested.Sub(planted).Hours() / 24))
+	remDays := totalDays % 7
+
+	for week := 1; week < ((totalDays-remDays)/7)+1; week++ {
+		weekEntry := new(types.Week)
+
+		weekStart = planted.AddDate(0, 0, 7*(week-1))
+		weekEnd = planted.AddDate(0, 0, 7*week)
+		weekEntry.WeekOf.Start = weekStart.Unix()
+		weekEntry.WeekOf.End = weekEnd.Unix()
+
+		for _, entry := range *sensorData {
+			filterSensorEntry(entry, weekEntry, weekStart, weekEnd)
+		}
+		s.Data = append(s.Data, *weekEntry)
+	}
+
+	weekEntry := new(types.Week)
+	weekEntry.WeekOf.Start = planted.AddDate(0, 0, totalDays-remDays).Unix()
+	weekEntry.WeekOf.End = harvested.Unix()
+	for _, entry := range *sensorData {
+		filterSensorEntry(entry, weekEntry, planted.AddDate(0, 0, totalDays-remDays), harvested)
+	}
+	s.Data = append(s.Data, *weekEntry)
+
+	if err := db.AddSummary(*s); err != nil {
+		respondWithError(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	return
+}
+
+func getsummaries(w http.ResponseWriter, r *http.Request) {
+	summaries, err := db.GetSummaries()
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err)
+		return
+	}
+	sendResponse(w, *summaries)
 	return
 }
 
@@ -373,6 +432,17 @@ func isProtected(endpoint func(http.ResponseWriter, *http.Request)) http.Handler
 	})
 }
 
+func filterSensorEntry(e types.SensorEntry, w *types.Week, weekStart time.Time, weekEnd time.Time) {
+	if e.Time >= weekStart.Unix() && e.Time <= weekEnd.Unix() {
+		switch e.SensorType {
+		case consts.Temperature:
+			w.Data.Temperature.Values = append(w.Data.Temperature.Values, e.Value)
+		case consts.WaterLevel:
+			w.Data.WaterLevel.Values = append(w.Data.WaterLevel.Values, e.Value)
+		}
+	}
+}
+
 func hashPassword(password string) ([]byte, error) {
 	p, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
 	if err != nil {
@@ -424,14 +494,14 @@ func server() *http.Server {
 	log.Printf("server running pn port %s...", port)
 	router.HandleFunc("/register", register).Methods("POST")
 	router.HandleFunc("/token", getToken).Methods("GET")
-	// router.Handle("/api/sensor/", isProtected(getSensorData)).Methods("GET")
 	router.Handle("/api/sensor/", isProtected(getSensorData)).Methods("GET")
 	router.Handle("/userinfo", isProtected(userinfo)).Methods("GET")
 	router.Handle("/api/logs/", isProtected(getLogs)).Methods("GET")
 	router.Handle("/api/settings", isProtected(changeSettings)).Methods("POST")
 	router.Handle("/api/farmdetails", isProtected(addFarmDetails)).Methods("POST")
 	router.Handle("/api/farmdetails", isProtected(getFarmDetails)).Methods("GET")
-
+	router.Handle("/api/generatesummary", isProtected(generateSummary)).Methods("GET")
+	router.Handle("/api/getsummaries", isProtected(getsummaries)).Methods("GET")
 	return &http.Server{
 		Addr:    ":8080",
 		Handler: handlers.CORS(allowedHeaders, allowedOrigins, allowedMethods)(router),
