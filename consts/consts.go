@@ -17,6 +17,7 @@ const (
 	User        BucketName = "user"
 	Log         BucketName = "log"
 	FarmDetails BucketName = "farmdetails"
+	Summary     BucketName = "summary"
 
 	CoolingFan      OutputDevice = "coolingFan"
 	CirculationPump OutputDevice = "circulationpump"
