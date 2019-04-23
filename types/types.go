@@ -4,6 +4,27 @@ import (
 	"github.com/only1isus/majorProj/consts"
 )
 
+type Summary struct {
+	ID          string      `json:"id"`
+	FarmDetails FarmDetails `json:"farmDetails"`
+	Data        []Week      `json:"data"`
+}
+
+type Week struct {
+	WeekOf struct {
+		Start int64 `json:"start"`
+		End   int64 `json:"end"`
+	} `json:"weekOf"`
+	Data struct {
+		Temperature struct {
+			Values []float64 `json:"values"`
+		} `json:"temperature"`
+		WaterLevel struct {
+			Values []float64 `json:"values"`
+		} `json:"waterlevel"`
+	}
+}
+
 // Log holds []LogEntry
 type Log struct {
 	Entry []LogEntry `json:"entry"`
@@ -44,7 +65,7 @@ type FarmDetails struct {
 	CropType     string `json:"cropType"`
 	PlantedOn    int64  `json:"plantedOn"`
 	HarvestOn    int64  `json:"harvestOn"`
-	NKP          string `json:"npk"`
+	NPK          string `json:"npk"`
 	MaturityTime int64  `json:"maturityTime"`
 	Configured   bool   `json:"configured"`
 }
