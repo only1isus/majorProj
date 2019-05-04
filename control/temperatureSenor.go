@@ -6,35 +6,44 @@ import (
 	"log"
 	"time"
 
+	"github.com/only1isus/majorProj/rpc"
+
+	i2c "github.com/d2r2/go-i2c"
+	sht3x "github.com/d2r2/go-sht3x"
 	"github.com/only1isus/majorProj/consts"
 	"github.com/only1isus/majorProj/types"
-	"github.com/yryz/ds18b20"
 )
 
 // TemperatureSensor is a type of the sensor struct
-type TemperatureSensor Sensor
+type TemperatureSensor I2CSensor
 
 // NewTemperatureSensor return a TemperatureSensor struct
-func NewTemperatureSensor() TemperatureSensor {
-	return TemperatureSensor{}
+func NewTemperatureSensor() (*TemperatureSensor, error) {
+	temperatureSensor, err := NewI2CSensor(consts.Sth3xHumidity)
+	if err != nil {
+		return nil, err
+	}
+	ts := TemperatureSensor(*temperatureSensor)
+	return &ts, nil
 }
 
 // Get method when called returns the current temperature.
 func (t *TemperatureSensor) Get() (*float64, error) {
-	sensors, err := ds18b20.Sensors()
+	fmt.Println("reading temperature")
+	i2cconn, err := i2c.NewI2C(t.Address, t.Bus)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
+	defer i2cconn.Close()
 
-	for _, sensor := range sensors {
-		var err error
-		t.value, err = ds18b20.Temperature(sensor)
-		if err != nil {
-			return nil, err
-		}
-		break
+	sensor := sht3x.NewSHT3X()
+	temperature, _, err := sensor.ReadTemperatureAndRelativeHumidity(i2cconn, sht3x.RepeatabilityLow)
+	if err != nil {
+		return nil, err
 	}
-	return &t.value, nil
+	tmp := new(float64)
+	*tmp = ToFixed(float64(temperature), 1)
+	return tmp, nil
 }
 
 // Maintain method tries to keep the temperature at the value passed to the method.
@@ -93,19 +102,28 @@ func (t *TemperatureSensor) Maintain(value float64, f *OutputDevice, notify chan
 }
 
 // Prepare gets the entry ready to be committed to the database
-func (t *TemperatureSensor) Prepare() (*[]byte, error) {
-	temp, err := t.Get()
-	if err != nil {
-		return nil, err
+func (t *TemperatureSensor) ReadAndCommit() error {
+	for {
+		timer := time.NewTimer(time.Minute * time.Duration(t.Every))
+		defer timer.Stop()
+		// wait for the timer to reach its limit
+		<-timer.C
+
+		temp, err := t.Get()
+		if err != nil {
+			return err
+		}
+		data := &types.SensorEntry{
+			Time:       time.Now().Unix(),
+			SensorType: consts.Temperature,
+			Value:      *temp,
+		}
+		out, err := json.Marshal(data)
+		if err != nil {
+			return err
+		}
+		if err := rpc.CommitSensorData(&out); err != nil {
+			return err
+		}
 	}
-	entry := types.SensorEntry{
-		Time:       time.Now().Unix(),
-		SensorType: consts.Temperature,
-		Value:      *temp,
-	}
-	data, err := json.Marshal(entry)
-	if err != nil {
-		return nil, err
-	}
-	return &data, nil
 }
