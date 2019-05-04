@@ -356,6 +356,9 @@ func GetSummaries() (*[]types.Summary, error) {
 	summaries := new([]types.Summary)
 	if err := db.View(func(tx *bolt.Tx) error {
 		root := tx.Bucket([]byte(consts.Summary))
+		if root == nil {
+			return fmt.Errorf("the bucket is empty")
+		}
 		if err := root.ForEach(func(k, v []byte) error {
 			if err := json.Unmarshal(v, summary); err != nil {
 				return nil

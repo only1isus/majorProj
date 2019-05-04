@@ -159,11 +159,8 @@ func TestGetFarmDetails(t *testing.T) {
 }
 
 func TestWriteSummary(t *testing.T) {
-	fd, err := GetFarmDetails([]byte(bucket))
+	_, err := GetSummaries()
 	if err != nil {
 		t.Fatalf("got an error adding farm details to the database, %v", err)
-	}
-	if (*fd).CropType != "spinach" {
-		t.Fatal("failed, the information is not the same.", fd)
 	}
 }
