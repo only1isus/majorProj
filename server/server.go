@@ -1,17 +1,18 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"math"
-	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ghodss/yaml"
+	"github.com/only1isus/majorProj/config"
 
 	"github.com/joho/godotenv"
 	"github.com/segmentio/ksuid"
@@ -25,14 +26,14 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/only1isus/majorProj/consts"
 	db "github.com/only1isus/majorProj/server/database"
+
+	"github.com/only1isus/majorProj/rpc"
 	"github.com/only1isus/majorProj/types"
 	"google.golang.org/grpc"
 )
 
 const (
-	host     string = "localhost"
-	port     string = ":8080"
-	grpcPort string = ":8001"
+	port string = ":8080"
 )
 
 // hard coded for testing reasons. ENV will be used eventually
@@ -138,45 +139,31 @@ func getSensorData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	claims := getClaims(w, r)
-	//
+	var st consts.BucketFilter
 	key := claims["key"].(string)
 	switch strings.ToLower(sensorType) {
 	case "humidity":
-		data, err := db.GetSensorData([]byte(key), consts.Humidity, int64(start), int64(end))
-		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, err)
-			return
-		}
-		sendResponse(w, data)
-		return
+		st = consts.Humidity
 	case "temperature":
-		data, err := db.GetSensorData([]byte(key), consts.Temperature, int64(start), int64(end))
-		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, err)
-			return
-		}
-		sendResponse(w, data)
-		return
+		st = consts.Temperature
 	case "waterlevel":
-		data, err := db.GetSensorData([]byte(key), consts.WaterLevel, int64(start), int64(end))
-		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, err)
-			return
-		}
-		sendResponse(w, data)
-		return
+		st = consts.WaterLevel
+	case "ph":
+		st = consts.PH
 	case "all":
-		data, err := db.GetSensorData([]byte(key), consts.All, int64(start), int64(end))
-		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, err)
-			return
-		}
-		sendResponse(w, data)
-		return
+		st = consts.All
 	default:
 		respondWithError(w, http.StatusNotFound, fmt.Errorf("page not found"))
 		return
 	}
+
+	data, err := db.GetSensorData([]byte(key), st, int64(start), int64(end))
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err)
+		return
+	}
+	sendResponse(w, data)
+	return
 }
 
 // get all the logs
@@ -458,33 +445,6 @@ func comparePasswords(hashedPassword, password []byte) bool {
 	return true
 }
 
-type svr struct{}
-
-func (s *svr) CommitSensorData(ctx context.Context, data *controller.SensorData) (*controller.SuccessResponse, error) {
-	d := types.SensorEntry{}
-	err := json.Unmarshal(data.Data, &d)
-	if err != nil {
-		return &controller.SuccessResponse{Success: false}, err
-	}
-	err = db.AddSensorEntry(data.Key, []byte(ksuid.New().String()), d)
-	if err != nil {
-		return &controller.SuccessResponse{Success: false}, err
-	}
-	return &controller.SuccessResponse{Success: true}, nil
-}
-
-func (s *svr) CommitLog(ctx context.Context, data *controller.LogData) (*controller.SuccessResponse, error) {
-	l := types.LogEntry{}
-	if err := json.Unmarshal(data.Data, &l); err != nil {
-		return &controller.SuccessResponse{Success: false}, err
-	}
-	err := db.AddLogEntry(data.Key, []byte(ksuid.New().String()), l)
-	if err != nil {
-		return &controller.SuccessResponse{Success: false}, err
-	}
-	return &controller.SuccessResponse{Success: true}, nil
-}
-
 func server() *http.Server {
 	allowedHeaders := handlers.AllowedHeaders([]string{"application/json", "application/x-www-form-urlencoded", "Origin", "Access-Control-Allow-Origin", "X-Requested-With", "Content-Type", "Accept", "multipart/form-data", "Token", "Authorization"})
 	allowedOrigins := handlers.AllowedOrigins([]string{"*"})
@@ -509,34 +469,31 @@ func server() *http.Server {
 }
 
 func main() {
+	conf, err := config.ReadConfigFile()
+	if err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
+	c := types.Database{}
+	if err := yaml.Unmarshal(conf, &c); err != nil {
+		log.Printf("cannot get the notification setting: %v\n", err)
+		os.Exit(1)
+	}
+
 	kill := make(chan bool)
 
 	go func() {
 		server := server()
 		err := http.ListenAndServe(server.Addr, server.Handler)
 		if err != nil {
-			log.Fatalf("cannot create a connection on port %s", port)
+			log.Fatalf("cannot create a connection on port %s\n", port)
 		}
 	}()
 
-	// make setting up a gRPC connection
 	grpcsrv := grpc.NewServer()
-	controller.RegisterCommitServer(grpcsrv, &svr{})
+	controller.RegisterCommitServer(grpcsrv, &rpc.CommitSVR{})
 
-	conn, err := net.Listen("tcp", grpcPort)
-	if err != nil {
-		log.Printf("cannot create a connection on port %s\n", grpcPort)
-		os.Exit(1)
-	}
-
-	// run the server as a goroutine as to avoid blocking
-	go func() {
-		fmt.Printf("gRPC server running on port %v\n", grpcPort)
-		if err := grpcsrv.Serve(conn); err != nil {
-			log.Fatalf("failed to create gRPC serve: %v\n", err)
-			os.Exit(1)
-		}
-	}()
+	go rpc.NewServer(grpcsrv, fmt.Sprintf("%s:%s", c.Connection.Host, c.Connection.Port))
 
 	<-kill
 }
