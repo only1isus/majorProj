@@ -1,12 +1,14 @@
 package control
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/only1isus/ADS1115"
 
 	"github.com/only1isus/majorProj/consts"
+	"github.com/only1isus/majorProj/rpc"
 	"github.com/only1isus/majorProj/types"
 )
 
@@ -26,12 +28,14 @@ func NewWaterLevelSensor(address, bus int) (*WaterLevelSensor, error) {
 	return &wl, nil
 }
 
-func (wl *WaterLevelSensor) Get() (float64, error) {
+func (wl *WaterLevelSensor) Get() (*float64, error) {
 	value, err := wl.connection.Read(wl.AnalogPin)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return value, nil
+	out := new(float64)
+	*out = ToFixed(float64(value), 1)
+	return out, nil
 }
 
 // CheckAndNotify takes the level of water as an int and a channel to send responses to.
@@ -57,9 +61,9 @@ func (wl *WaterLevelSensor) CheckAndNotify(level float64, entry chan *types.LogE
 					Type:    string(consts.WaterLevel),
 				}
 			}
-			if currentLevel < level {
+			if *currentLevel < level {
 				entry <- &types.LogEntry{
-					Message: fmt.Sprintf("The current water level is %v. Please consider refilling.", currentLevel),
+					Message: fmt.Sprintf("The current water level is %v. Please consider refilling.", *currentLevel),
 					Success: true,
 					Time:    time.Now().Unix(),
 					Type:    string(consts.WaterLevel),
@@ -67,6 +71,27 @@ func (wl *WaterLevelSensor) CheckAndNotify(level float64, entry chan *types.LogE
 			}
 		}
 	}(entry)
+}
+
+func (wl WaterLevelSensor) ReadAndNotify() error {
+
+	voltageValue, err := wl.Get()
+	if err != nil {
+		return err
+	}
+	data := &types.SensorEntry{
+		SensorType: consts.WaterLevel,
+		Time:       time.Now().Unix(),
+		Value:      *voltageValue,
+	}
+	out, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	if err := rpc.CommitSensorData(&out); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (wl *WaterLevelSensor) Close() error {
