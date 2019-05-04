@@ -40,14 +40,23 @@ type LogEntry struct {
 
 // DatabaseConnection ...
 type Database struct {
-	DBConnection Connection `json:"databaseConnection"`
+	Connection DBConnection `json:"databaseConnection"`
 }
 
-type Connection struct {
+type DBConnection struct {
 	Port                  string `yaml:"port"`
 	Host                  string `yaml:"host"`
 	Secret                string `yaml:"secret"`
 	RequireAuthentication bool   `yaml:"requireAuthentication"`
+}
+
+type Notification struct {
+	Connection NotificationConnection `json:"notification"`
+}
+
+type NotificationConnection struct {
+	Port string `yaml:"port"`
+	Host string `yaml:"host"`
 }
 
 // User ...
